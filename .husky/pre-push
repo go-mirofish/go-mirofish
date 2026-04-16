@@ -1,0 +1,26 @@
+#!/bin/sh
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT" || exit 1
+
+# Go tests (only if gateway/ exists)
+if [ -d "gateway" ]; then
+  echo "Running Go tests..."
+  (cd gateway && go test ./...)
+fi
+
+# Python tests (exit 5 = no tests collected)
+echo "Running Python tests..."
+(
+  cd backend || exit 1
+  set +e
+  uv run pytest --tb=short -q
+  status=$?
+  set -e
+  if [ "$status" -eq 5 ]; then
+    echo "No tests collected, skipping."
+  elif [ "$status" -ne 0 ]; then
+    exit "$status"
+  fi
+)

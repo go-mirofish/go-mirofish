@@ -1,0 +1,24 @@
+#!/bin/sh
+set -e
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT" || exit 1
+
+# Go: format and vet (only if gateway/ exists)
+if [ -d "gateway" ]; then
+  echo "Running go vet..."
+  (cd gateway && go vet ./...)
+fi
+
+# Python: compile check on staged files (syntax only)
+echo "Checking Python syntax..."
+PY_FILES="$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)"
+if [ -n "$PY_FILES" ]; then
+  cd backend || exit 1
+  echo "$PY_FILES" | while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    [ -f "$ROOT/$f" ] || continue
+    uv run python -m py_compile "$ROOT/$f"
+  done
+  cd "$ROOT" || exit 1
+fi

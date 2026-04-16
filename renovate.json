@@ -1,0 +1,59 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["every weekend"],
+  "timezone": "UTC",
+  "labels": ["dependencies"],
+  "assignees": ["JustineDevs"],
+  "packageRules": [
+    {
+      "description": "Disable auto-update for pinned AI packages. These require manual validation before bumping.",
+      "matchPackageNames": ["camel-oasis", "camel-ai", "zep-cloud"],
+      "enabled": false
+    },
+    {
+      "description": "Auto-merge patch updates for safe Python packages",
+      "matchManagers": ["uv"],
+      "matchUpdateTypes": ["patch"],
+      "matchPackageNames": [
+        "flask",
+        "flask-cors",
+        "openai",
+        "PyMuPDF",
+        "charset-normalizer",
+        "chardet",
+        "python-dotenv",
+        "pydantic"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Group all Go module updates into one PR",
+      "matchManagers": ["gomod"],
+      "groupName": "Go modules",
+      "automerge": false
+    },
+    {
+      "description": "Group all frontend dependency updates into one PR",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["frontend/package.json"],
+      "groupName": "Frontend dependencies",
+      "automerge": false
+    },
+    {
+      "description": "Auto-merge GitHub Actions patch updates",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "automerge": true
+    }
+  ],
+  "uv": {
+    "enabled": true
+  },
+  "gomod": {
+    "enabled": true
+  },
+  "github-actions": {
+    "enabled": true
+  }
+}
