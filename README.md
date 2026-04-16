@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./static/image/go-mirofish-logo.svg" alt="go-mirofish logo" width="75%"/>
+<img src="./static/image/go-mirofish-thumbnail.png" alt="go-mirofish logo" width="75%"/>
 
 **MiroFish, lightweight and local-first**
 </br>
