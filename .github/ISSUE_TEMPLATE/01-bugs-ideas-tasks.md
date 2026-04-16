@@ -8,7 +8,9 @@ assignees: []
 
 ## How we use GitHub Issues
 
-Issues in **go-mirofish** are for **bugs**, **ideas**, **work tracking**, **planning**, and **focused discussion**. Implementation work is summarized in pull requests using the **six-layer template** in [`.github/PULL_REQUEST_TEMPLATE.md`](./PULL_REQUEST_TEMPLATE.md) (GitHub requires that exact filename; there is no separate `PR_TEMPLATE.md`).
+Issues in **go-mirofish** are for **bugs**, **ideas**, **work tracking**, **planning**, and **focused discussion**. Implementation work is summarized in pull requests using the **six-layer** template in [`PULL_REQUEST_TEMPLATE.md`](../PULL_REQUEST_TEMPLATE.md) (GitHub accepts that name under `.github/`; there is no separate `PR_TEMPLATE.md`).
+
+This file lives under [`.github/ISSUE_TEMPLATE/`](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository) so it appears in the **new issue** template chooser (current GitHub workflow).
 
 ### Common uses
 
@@ -20,7 +22,7 @@ Issues in **go-mirofish** are for **bugs**, **ideas**, **work tracking**, **plan
 | **Project planning** | Tie issues to **[GitHub Projects](https://docs.github.com/en/issues/planning-and-tracking-with-projects)** (board or roadmap) and **milestones** for releases or phases. |
 | **Team discussion** | One thread per **design or implementation** decision so history stays searchable (link related PRs when decided). |
 
-Official reference: [GitHub Docs — Issues](https://docs.github.com/en/issues).
+Official reference: [About issue and pull request templates](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/about-issue-and-pull-request-templates).
 
 ### Key GitHub features
 
@@ -28,7 +30,7 @@ Official reference: [GitHub Docs — Issues](https://docs.github.com/en/issues).
 - **Assignees** — who is **responsible** for driving the issue to closure.
 - **Milestones** — group issues for a **release**, **phase**, or **deadline**.
 - **Sub-issues** — **nest** smaller tasks under a parent for hierarchy ([about sub-issues](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/adding-sub-issues)).
-- **Issue templates** — this file is the **default**; it nudges everyone toward consistent detail ([about templates](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests)).
+- **Issue templates** — stored in **`.github/ISSUE_TEMPLATE/`** with valid `name:` and `about:` in YAML front matter ([configuring templates](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository)).
 
 ---
 
@@ -46,7 +48,9 @@ Official reference: [GitHub Docs — Issues](https://docs.github.com/en/issues).
 
 <!-- One short paragraph: what this issue is about. -->
 
-### Details<!-- For bugs: steps to reproduce, expected behavior, actual behavior, logs/screenshots. -->
+### Details
+
+<!-- For bugs: steps to reproduce, expected behavior, actual behavior, logs/screenshots. -->
 <!-- For features: problem today, proposed direction, non-goals if any. -->
 <!-- For tasks: bullet list or task list. -->
 
@@ -65,4 +69,4 @@ Official reference: [GitHub Docs — Issues](https://docs.github.com/en/issues).
 
 ---
 
-**Deep planning:** For large or cross-cutting work, maintainers may ask for the full **six-layer** breakdown—that structure lives in [`.github/PULL_REQUEST_TEMPLATE.md`](./PULL_REQUEST_TEMPLATE.md) and in [docs/contributing/github-issues-6-layer.md](../docs/contributing/github-issues-6-layer.md).
+**Deep planning:** For large or cross-cutting work, maintainers may ask for the full **six-layer** breakdown—that structure lives in [`PULL_REQUEST_TEMPLATE.md`](../PULL_REQUEST_TEMPLATE.md) and in [docs/contributing/github-pr-6-layer.md](../../docs/contributing/github-pr-6-layer.md).

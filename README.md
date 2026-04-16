@@ -115,7 +115,7 @@ Upload documents, describe what you want to predict, and get a full simulation r
 
 ## Contributing
 
-Issues and PRs are welcome. Use this repo for **go-mirofish** changes; upstream product discussion stays with [MiroFish](https://github.com/666ghj/MiroFish). For structured issue planning and **Husky / Commitlint / Changesets / Renovate**, see **[docs/contributing/README.md](docs/contributing/README.md)** (includes the [6-layer issue guide](docs/contributing/github-issues-6-layer.md)). Longer guides and the Phase 1–6 roadmap will also live on **[go.mirofish.ai](https://go.mirofish.ai)** as the docs site grows.
+Issues and PRs are welcome. Use this repo for **go-mirofish** changes; upstream product discussion stays with [MiroFish](https://github.com/666ghj/MiroFish). For **contributing** (6-layer PR planning, Husky, Commitlint, Changesets, Renovate), see **[docs/contributing/README.md](docs/contributing/README.md)** (includes the [6-layer PR planning guide](docs/contributing/github-pr-6-layer.md)). Longer guides and the Phase 1–6 roadmap will also live on **[go.mirofish.ai](https://go.mirofish.ai)** as the docs site grows.
 
 ## License
 

@@ -1,0 +1,6 @@
+# https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository#configuring-the-template-chooser
+blank_issues_enabled: true
+contact_links:
+  - name: Contributing & commit conventions
+    url: https://github.com/go-mirofish/go-mirofish/blob/main/docs/contributing/README.md
+    about: Husky, Commitlint scopes, Changesets, Renovate, and the full 6-layer narrative.

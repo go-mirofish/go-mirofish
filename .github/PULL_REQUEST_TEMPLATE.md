@@ -1,5 +1,5 @@
 <!--
-Full narrative: docs/contributing/github-issues-6-layer.md
+Full narrative: docs/contributing/github-pr-6-layer.md
 Commits: docs/contributing/commit-messages.md
 GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 -->

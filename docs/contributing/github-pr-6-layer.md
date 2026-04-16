@@ -1,14 +1,14 @@
-# 6-Layer Planning for GitHub Issues (go-mirofish)
+# 6-Layer Planning for Pull Requests (go-mirofish)
 
-This guide explains how to use the **6-layer planning structure** when creating or working on GitHub issues in **go-mirofish**. It is adapted from a generic template and aligned to this repository’s layout, migration phases, and contribution model.
+This guide is the **long-form narrative** for the same six-layer structure embedded in [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md). Use it when planning or reviewing **pull requests** in **go-mirofish**. It is aligned to this repository’s layout, migration phases, and contribution model.
 
-**GitHub templates:** **Issues** start from [`.github/ISSUE_TEMPLATE.md`](../../.github/ISSUE_TEMPLATE.md) (common uses: bugs, features, tasks, planning, discussion + GitHub features). **Pull requests** use the **six-layer** structure in [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md) (GitHub does not load a file named `PR_TEMPLATE.md`).
+**GitHub templates:** **Issues** (bugs, ideas, tasks) use the chooser under [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/) per [GitHub Docs](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/about-issue-and-pull-request-templates). **Pull requests** use the six-layer body in [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md); this file expands each layer for reading and workshops.
 
 ---
 
 ## Overview
 
-All substantive issues in this repository should follow a structured six-layer approach so intent, constraints, design, execution, and quality are explicit. Use it for **features**, **bugs**, **chores**, and **epics** that touch product behavior, the hybrid stack, contracts, or release gates.
+Substantive **PRs** should make intent, constraints, design, execution, and quality explicit across six layers. Use it for **features**, **bugs**, **chores**, and **epics** that touch product behavior, the hybrid stack, contracts, or release gates.
 
 ---
 
@@ -256,15 +256,15 @@ Adjust steps to the issue — fewer for docs-only fixes.
 **Contributor actions**
 
 - Check gates before requesting final review.
-- Keep the issue updated through merge.
+- Keep the PR description updated through merge.
 
 ---
 
 ## How to use this template
 
-### Issue creators
+### PR authors & issue creators
 
-1. For **planning in a PR**, use [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md). For **new issues** (bugs, ideas, tasks), use [`.github/ISSUE_TEMPLATE.md`](../../.github/ISSUE_TEMPLATE.md)—or copy sections from this doc.
+1. Open **PRs** with [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md); use this doc for detail. For **new issues** (before a PR), pick a template under [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/)—or copy sections from this doc.
 2. Fill every layer with enough detail that someone unfamiliar with the thread can execute.
 3. Add labels, project, milestone, and links.
 4. Avoid scope creep without updating Layers 1, 3, and 4.
@@ -288,7 +288,7 @@ Adjust steps to the issue — fewer for docs-only fixes.
 **Do**
 
 - Be specific; link paths and prior art.
-- Update the issue when you learn something new.
+- Update the PR / linked issue when you learn something new.
 - Prefer small PRs that close a slice of an epic.
 
 **Don’t**
@@ -305,5 +305,5 @@ Adjust steps to the issue — fewer for docs-only fixes.
 - **Discord**: [Join the server](http://discord.gg/ePf5aPaHnA) (see [README](../../README.md)).
 - **Upstream behavior**: compare with [MiroFish](https://github.com/666ghj/MiroFish) when parity matters.
 
-For a short link from the README **Contributing** section, add:  
-`docs/contributing/github-issues-6-layer.md`.
+For a short link from the README **Contributing** section, use:  
+`docs/contributing/github-pr-6-layer.md`.

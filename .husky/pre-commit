@@ -4,13 +4,18 @@ set -e
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT" || exit 1
 
-# Go: format and vet (only if gateway/ exists)
+# Git hooks often get a minimal PATH (no login shell).
+if [ -n "$HOME" ]; then
+  export PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin"
+fi
+
+# Go: vet (only if gateway/ exists)
 if [ -d "gateway" ]; then
   echo "Running go vet..."
   (cd gateway && go vet ./...)
 fi
 
-# Python: compile check on staged files (syntax only)
+# Python: syntax check on staged files
 echo "Checking Python syntax..."
 PY_FILES="$(git diff --cached --name-only --diff-filter=ACM | grep '\.py$' || true)"
 if [ -n "$PY_FILES" ]; then
@@ -18,7 +23,16 @@ if [ -n "$PY_FILES" ]; then
   echo "$PY_FILES" | while IFS= read -r f; do
     [ -z "$f" ] && continue
     [ -f "$ROOT/$f" ] || continue
-    uv run python -m py_compile "$ROOT/$f"
+    if command -v uv >/dev/null 2>&1; then
+      uv run python -m py_compile "$ROOT/$f"
+    elif [ -x ".venv/bin/python" ]; then
+      .venv/bin/python -m py_compile "$ROOT/$f"
+    elif [ -f ".venv/Scripts/python.exe" ]; then
+      .venv/Scripts/python.exe -m py_compile "$ROOT/$f"
+    else
+      echo "pre-commit: uv not in PATH and backend/.venv missing — skipping Python syntax check for $f"
+      echo "  Fix: install uv and run: cd backend && uv sync"
+    fi
   done
   cd "$ROOT" || exit 1
 fi
