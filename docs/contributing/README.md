@@ -1,5 +1,7 @@
 # Contributing
 
+Hub for contributor docs. The repo root **[CONTRIBUTING.md](../../CONTRIBUTING.md)** is the short entry point GitHub highlights for new contributors.
+
 - **[6-layer PR planning (narrative)](github-pr-6-layer.md)** — full guide (pairs with **PR template**); **PR template**: [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md); **issue templates** (chooser): [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/).
 - **[Commit messages (Conventional Commits)](commit-messages.md)** — types, scopes, examples, and what each Husky hook runs.
 
