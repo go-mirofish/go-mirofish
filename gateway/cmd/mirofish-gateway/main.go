@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ type config struct {
 	backendURL      *url.URL
 	frontendDevURL  *url.URL
 	frontendDistDir string
+	projectsDir     string
 }
 
 type gateway struct {
@@ -41,6 +43,8 @@ func main() {
 	gw := newGateway(cfg)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", gw.handleHealth)
+	mux.HandleFunc("/api/graph/project/list", gw.handleProjectList)
+	mux.HandleFunc("/api/graph/project/", gw.handleProjectControlPlane)
 	mux.HandleFunc("/api/report/generate/status", gw.handleReportStatusAlias)
 	mux.HandleFunc("/api/simulation/run", gw.handleSimulationRunAlias)
 	mux.HandleFunc("/api/simulation/", gw.handleSimulationStatusAlias)
@@ -88,6 +92,7 @@ func loadConfig() (config, error) {
 		backendURL:      backendURL,
 		frontendDevURL:  frontendDevURL,
 		frontendDistDir: envOrDefault("FRONTEND_DIST_DIR", "frontend/dist"),
+		projectsDir:     envOrDefault("PROJECTS_DIR", "backend/uploads/projects"),
 	}, nil
 }
 
@@ -124,6 +129,169 @@ func (g *gateway) handleHealth(w http.ResponseWriter, _ *http.Request) {
 
 func (g *gateway) handleAPIProxy(w http.ResponseWriter, r *http.Request) {
 	g.backendProxy.ServeHTTP(w, r)
+}
+
+func (g *gateway) handleProjectList(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	limit := 50
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+
+	projects, err := g.listProjects(limit)
+	if err != nil {
+		log.Printf("project list failed: %v", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"data":    projects,
+		"count":   len(projects),
+	})
+}
+
+func (g *gateway) handleProjectControlPlane(w http.ResponseWriter, r *http.Request) {
+	trimmed := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+	const prefix = "api/graph/project/"
+	if !strings.HasPrefix(trimmed, prefix) {
+		g.handleAPIProxy(w, r)
+		return
+	}
+
+	rest := strings.TrimPrefix(trimmed, prefix)
+	if rest == "" || rest == "." {
+		g.handleAPIProxy(w, r)
+		return
+	}
+
+	if strings.HasSuffix(rest, "/reset") {
+		projectID := strings.TrimSuffix(rest, "/reset")
+		g.handleProjectReset(w, r, projectID)
+		return
+	}
+
+	projectID := rest
+	switch r.Method {
+	case http.MethodGet:
+		g.handleProjectGet(w, r, projectID)
+	case http.MethodDelete:
+		g.handleProjectDelete(w, r, projectID)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (g *gateway) handleProjectGet(w http.ResponseWriter, _ *http.Request, projectID string) {
+	project, err := g.readProject(projectID)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"success": false,
+				"error":   "Project not found: " + projectID,
+			})
+			return
+		}
+
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"data":    project,
+	})
+}
+
+func (g *gateway) handleProjectDelete(w http.ResponseWriter, _ *http.Request, projectID string) {
+	projectDir := g.projectDir(projectID)
+	if _, err := os.Stat(projectDir); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"success": false,
+				"error":   "Project delete failed: " + projectID,
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if err := os.RemoveAll(projectDir); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "Project deleted: " + projectID,
+	})
+}
+
+func (g *gateway) handleProjectReset(w http.ResponseWriter, r *http.Request, projectID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	project, err := g.readProject(projectID)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeJSON(w, http.StatusNotFound, map[string]any{
+				"success": false,
+				"error":   "Project not found: " + projectID,
+			})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	if ontology, ok := project["ontology"]; ok && ontology != nil {
+		project["status"] = "ontology_generated"
+	} else {
+		project["status"] = "created"
+	}
+	project["graph_id"] = nil
+	project["graph_build_task_id"] = nil
+	project["error"] = nil
+	project["updated_at"] = time.Now().Format(time.RFC3339)
+
+	if err := g.writeProject(projectID, project); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"success": false,
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "Project reset: " + projectID,
+		"data":    project,
+	})
 }
 
 func (g *gateway) handleSimulationRunAlias(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +439,73 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func (g *gateway) projectDir(projectID string) string {
+	return filepath.Join(g.cfg.projectsDir, projectID)
+}
+
+func (g *gateway) projectMetaPath(projectID string) string {
+	return filepath.Join(g.projectDir(projectID), "project.json")
+}
+
+func (g *gateway) readProject(projectID string) (map[string]any, error) {
+	raw, err := os.ReadFile(g.projectMetaPath(projectID))
+	if err != nil {
+		return nil, err
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
+func (g *gateway) writeProject(projectID string, payload map[string]any) error {
+	metaPath := g.projectMetaPath(projectID)
+	if err := os.MkdirAll(filepath.Dir(metaPath), 0o755); err != nil {
+		return err
+	}
+	raw, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(metaPath, raw, 0o644)
+}
+
+func (g *gateway) listProjects(limit int) ([]map[string]any, error) {
+	if err := os.MkdirAll(g.cfg.projectsDir, 0o755); err != nil {
+		return nil, err
+	}
+
+	entries, err := os.ReadDir(g.cfg.projectsDir)
+	if err != nil {
+		return nil, err
+	}
+
+	projects := make([]map[string]any, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		project, err := g.readProject(entry.Name())
+		if err != nil {
+			continue
+		}
+		projects = append(projects, project)
+	}
+
+	sort.Slice(projects, func(i, j int) bool {
+		ic, _ := projects[i]["created_at"].(string)
+		jc, _ := projects[j]["created_at"].(string)
+		return ic > jc
+	})
+
+	if limit > 0 && len(projects) > limit {
+		projects = projects[:limit]
+	}
+	return projects, nil
 }
 
 func isFileInside(candidate, root string) bool {
