@@ -11,6 +11,7 @@ from ..config import Config
 from ..services.ontology_generator import OntologyGenerator
 from ..services.graph_builder import GraphBuilderService
 from ..services.text_processor import TextProcessor
+from ..utils.llm_client import LLMUpstreamError
 from ..utils.file_parser import FileParser
 from ..utils.logger import get_logger
 from ..utils.locale import t, get_locale, set_locale
@@ -219,6 +220,17 @@ def generate_ontology():
             }
         })
         
+    except LLMUpstreamError as e:
+        logger.error(f"Ontology generation failed due to upstream LLM error: {e.message}")
+        return jsonify({
+            "success": False,
+            "error": e.message,
+            "error_type": e.error_type,
+            "error_code": e.error_code,
+            "retry_after": e.retry_after,
+            "upstream_status": e.status_code,
+            "details": e.details,
+        }), e.status_code
     except Exception as e:
         return jsonify({
             "success": False,
