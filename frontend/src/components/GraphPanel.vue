@@ -225,6 +225,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import * as d3 from 'd3'
+import { themeResolved } from '../composables/theme.js'
 
 const props = defineProps({
   graphData: Object,
@@ -520,16 +521,16 @@ const renderGraph = () => {
   const link = linkGroup.selectAll('path')
     .data(edges)
     .enter().append('path')
-    .attr('stroke', '#C0C0C0')
+    .attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)')
     .attr('stroke-width', 1.5)
     .attr('fill', 'none')
     .style('cursor', 'pointer')
     .on('click', (event, d) => {
       event.stopPropagation()
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-      linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-      linkLabels.attr('fill', '#666')
-      d3.select(event.target).attr('stroke', '#3498db').attr('stroke-width', 3)
+      linkGroup.selectAll('path').attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)').attr('stroke-width', 1.5)
+      linkLabelBg.attr('fill', 'var(--doc-graph-edge-pill-bg)')
+      linkLabels.attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
+      d3.select(event.target).attr('stroke', 'var(--doc-accent, #3498db)').attr('stroke-width', 3)
       
       selectedItem.value = {
         type: 'edge',
@@ -540,7 +541,7 @@ const renderGraph = () => {
   const linkLabelBg = linkGroup.selectAll('rect')
     .data(edges)
     .enter().append('rect')
-    .attr('fill', 'rgba(255,255,255,0.95)')
+    .attr('fill', 'var(--doc-graph-edge-pill-bg)')
     .attr('rx', 3)
     .attr('ry', 3)
     .style('cursor', 'pointer')
@@ -548,11 +549,11 @@ const renderGraph = () => {
     .style('display', showEdgeLabels.value ? 'block' : 'none')
     .on('click', (event, d) => {
       event.stopPropagation()
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-      linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-      linkLabels.attr('fill', '#666')
-      link.filter(l => l === d).attr('stroke', '#3498db').attr('stroke-width', 3)
-      d3.select(event.target).attr('fill', 'rgba(52, 152, 219, 0.1)')
+      linkGroup.selectAll('path').attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)').attr('stroke-width', 1.5)
+      linkLabelBg.attr('fill', 'var(--doc-graph-edge-pill-bg)')
+      linkLabels.attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
+      link.filter(l => l === d).attr('stroke', 'var(--doc-accent, #3498db)').attr('stroke-width', 3)
+      d3.select(event.target).attr('fill', 'color-mix(in srgb, var(--doc-accent) 18%, transparent)')
       
       selectedItem.value = {
         type: 'edge',
@@ -566,7 +567,7 @@ const renderGraph = () => {
     .enter().append('text')
     .text(d => d.name)
     .attr('font-size', '9px')
-    .attr('fill', '#666')
+    .attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'middle')
     .style('cursor', 'pointer')
@@ -575,11 +576,11 @@ const renderGraph = () => {
     .style('display', showEdgeLabels.value ? 'block' : 'none')
     .on('click', (event, d) => {
       event.stopPropagation()
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-      linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-      linkLabels.attr('fill', '#666')
-      link.filter(l => l === d).attr('stroke', '#3498db').attr('stroke-width', 3)
-      d3.select(event.target).attr('fill', '#3498db')
+      linkGroup.selectAll('path').attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)').attr('stroke-width', 1.5)
+      linkLabelBg.attr('fill', 'var(--doc-graph-edge-pill-bg)')
+      linkLabels.attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
+      link.filter(l => l === d).attr('stroke', 'var(--doc-accent, #3498db)').attr('stroke-width', 3)
+      d3.select(event.target).attr('fill', 'var(--doc-accent, #3498db)')
       
       selectedItem.value = {
         type: 'edge',
@@ -599,7 +600,7 @@ const renderGraph = () => {
     .enter().append('circle')
     .attr('r', 10)
     .attr('fill', d => getColor(d.type))
-    .attr('stroke', '#fff')
+    .attr('stroke', 'var(--doc-graph-node-stroke, #fff)')
     .attr('stroke-width', 2.5)
     .style('cursor', 'pointer')
     .call(d3.drag()
@@ -636,8 +637,8 @@ const renderGraph = () => {
     )
     .on('click', (event, d) => {
       event.stopPropagation()
-      node.attr('stroke', '#fff').attr('stroke-width', 2.5)
-      linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
+      node.attr('stroke', 'var(--doc-graph-node-stroke, #fff)').attr('stroke-width', 2.5)
+      linkGroup.selectAll('path').attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)').attr('stroke-width', 1.5)
       d3.select(event.target).attr('stroke', '#E91E63').attr('stroke-width', 4)
       link.filter(l => l.source.id === d.id || l.target.id === d.id)
         .attr('stroke', '#E91E63')
@@ -652,12 +653,12 @@ const renderGraph = () => {
     })
     .on('mouseenter', (event, d) => {
       if (!selectedItem.value || selectedItem.value.data?.uuid !== d.rawData.uuid) {
-        d3.select(event.target).attr('stroke', '#333').attr('stroke-width', 3)
+        d3.select(event.target).attr('stroke', 'var(--doc-graph-node-stroke-hover, #374151)').attr('stroke-width', 3)
       }
     })
     .on('mouseleave', (event, d) => {
       if (!selectedItem.value || selectedItem.value.data?.uuid !== d.rawData.uuid) {
-        d3.select(event.target).attr('stroke', '#fff').attr('stroke-width', 2.5)
+        d3.select(event.target).attr('stroke', 'var(--doc-graph-node-stroke, #fff)').attr('stroke-width', 2.5)
       }
     })
 
@@ -667,7 +668,7 @@ const renderGraph = () => {
     .enter().append('text')
     .text(d => d.name.length > 8 ? d.name.substring(0, 8) + '…' : d.name)
     .attr('font-size', '11px')
-    .attr('fill', '#333')
+    .attr('fill', 'var(--doc-graph-node-label, var(--doc-text))')
     .attr('font-weight', '500')
     .attr('dx', 14)
     .attr('dy', 4)
@@ -708,10 +709,10 @@ const renderGraph = () => {
   
   svg.on('click', () => {
     selectedItem.value = null
-    node.attr('stroke', '#fff').attr('stroke-width', 2.5)
-    linkGroup.selectAll('path').attr('stroke', '#C0C0C0').attr('stroke-width', 1.5)
-    linkLabelBg.attr('fill', 'rgba(255,255,255,0.95)')
-    linkLabels.attr('fill', '#666')
+    node.attr('stroke', 'var(--doc-graph-node-stroke, #fff)').attr('stroke-width', 2.5)
+    linkGroup.selectAll('path').attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)').attr('stroke-width', 1.5)
+    linkLabelBg.attr('fill', 'var(--doc-graph-edge-pill-bg)')
+    linkLabels.attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
   })
 }
 
@@ -726,6 +727,12 @@ watch(showEdgeLabels, (newVal) => {
   if (linkLabelBgRef) {
     linkLabelBgRef.style('display', newVal ? 'block' : 'none')
   }
+})
+
+watch(themeResolved, () => {
+  nextTick(() => {
+    if (props.graphData?.nodes?.length) renderGraph()
+  })
 })
 
 const handleResize = () => {
@@ -961,7 +968,7 @@ input:checked + .slider:before {
 
 .toggle-label {
   font-size: 12px;
-  color: #666;
+  color: var(--doc-muted);
 }
 
 /* Detail Panel - Right Side */
@@ -971,10 +978,10 @@ input:checked + .slider:before {
   right: 20px;
   width: 320px;
   max-height: calc(100% - 100px);
-  background: #FFF;
-  border: 1px solid #EAEAEA;
+  background: var(--doc-surface);
+  border: 1px solid var(--doc-border);
   border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 32px color-mix(in srgb, #000 12%, transparent);
   overflow: hidden;
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   font-size: 13px;
@@ -988,14 +995,14 @@ input:checked + .slider:before {
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  background: #FAFAFA;
-  border-bottom: 1px solid #EEE;
+  background: var(--doc-workbench-mid);
+  border-bottom: 1px solid var(--doc-border);
   flex-shrink: 0;
 }
 
 .detail-title {
   font-weight: 600;
-  color: #333;
+  color: var(--doc-text);
   font-size: 14px;
 }
 
@@ -1013,14 +1020,14 @@ input:checked + .slider:before {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #999;
+  color: var(--doc-muted);
   line-height: 1;
   padding: 0;
   transition: color 0.2s;
 }
 
 .detail-close:hover {
-  color: #333;
+  color: var(--doc-text);
 }
 
 .detail-content {
@@ -1037,14 +1044,14 @@ input:checked + .slider:before {
 }
 
 .detail-label {
-  color: #888;
+  color: var(--doc-muted);
   font-size: 12px;
   font-weight: 500;
   min-width: 80px;
 }
 
 .detail-value {
-  color: #333;
+  color: var(--doc-text);
   flex: 1;
   word-break: break-word;
 }
@@ -1052,24 +1059,24 @@ input:checked + .slider:before {
 .detail-value.uuid-text {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: #666;
+  color: var(--doc-muted);
 }
 
 .detail-value.fact-text {
   line-height: 1.5;
-  color: #444;
+  color: var(--doc-text);
 }
 
 .detail-section {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #F0F0F0;
+  border-top: 1px solid var(--doc-border);
 }
 
 .section-title {
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--doc-muted);
   margin-bottom: 10px;
 }
 
@@ -1085,19 +1092,19 @@ input:checked + .slider:before {
 }
 
 .property-key {
-  color: #888;
+  color: var(--doc-muted);
   font-weight: 500;
   min-width: 90px;
 }
 
 .property-value {
-  color: #333;
+  color: var(--doc-text);
   flex: 1;
 }
 
 .summary-text {
   line-height: 1.6;
-  color: #444;
+  color: var(--doc-text);
   font-size: 12px;
 }
 
@@ -1110,11 +1117,11 @@ input:checked + .slider:before {
 .label-tag {
   display: inline-block;
   padding: 4px 12px;
-  background: #F5F5F5;
-  border: 1px solid #E0E0E0;
+  background: var(--doc-workbench-mid);
+  border: 1px solid var(--doc-border);
   border-radius: 16px;
   font-size: 11px;
-  color: #555;
+  color: var(--doc-text);
 }
 
 .episodes-list {
@@ -1126,24 +1133,24 @@ input:checked + .slider:before {
 .episode-tag {
   display: inline-block;
   padding: 6px 10px;
-  background: #F8F8F8;
-  border: 1px solid #E8E8E8;
+  background: var(--doc-code-bg);
+  border: 1px solid var(--doc-border);
   border-radius: 6px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  color: #666;
+  color: var(--doc-muted);
   word-break: break-all;
 }
 
 /* Edge relation header */
 .edge-relation-header {
-  background: #F8F8F8;
+  background: var(--doc-code-bg);
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 16px;
   font-size: 13px;
   font-weight: 500;
-  color: #333;
+  color: var(--doc-text);
   line-height: 1.5;
   word-break: break-word;
 }
@@ -1235,8 +1242,8 @@ input:checked + .slider:before {
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #E0E0E0;
-  border-top-color: #7B2D8E;
+  border: 3px solid var(--doc-border);
+  border-top-color: #7b2d8e;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin: 0 auto 16px;
@@ -1247,15 +1254,15 @@ input:checked + .slider:before {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: linear-gradient(135deg, #E8F5E9 0%, #F1F8E9 100%);
-  border: 1px solid #C8E6C9;
+  background: var(--doc-badge-ok-bg);
+  border: 1px solid color-mix(in srgb, var(--doc-badge-ok-fg) 35%, var(--doc-border));
 }
 
 .self-loop-count {
   margin-left: auto;
   font-size: 11px;
-  color: #666;
-  background: rgba(255,255,255,0.8);
+  color: var(--doc-badge-ok-fg);
+  background: var(--doc-surface);
   padding: 2px 8px;
   border-radius: 10px;
 }
@@ -1267,8 +1274,8 @@ input:checked + .slider:before {
 }
 
 .self-loop-item {
-  background: #FAFAFA;
-  border: 1px solid #EAEAEA;
+  background: var(--doc-workbench-mid);
+  border: 1px solid var(--doc-border);
   border-radius: 8px;
 }
 
@@ -1277,24 +1284,24 @@ input:checked + .slider:before {
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  background: #F5F5F5;
+  background: var(--doc-code-bg);
   cursor: pointer;
   transition: background 0.2s;
 }
 
 .self-loop-item-header:hover {
-  background: #EEEEEE;
+  background: var(--doc-workbench-mid);
 }
 
 .self-loop-item.expanded .self-loop-item-header {
-  background: #E8E8E8;
+  background: var(--doc-border);
 }
 
 .self-loop-index {
   font-size: 10px;
   font-weight: 600;
-  color: #888;
-  background: #E0E0E0;
+  color: var(--doc-muted);
+  background: var(--doc-border);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -1302,7 +1309,7 @@ input:checked + .slider:before {
 .self-loop-name {
   font-size: 12px;
   font-weight: 500;
-  color: #333;
+  color: var(--doc-text);
   flex: 1;
 }
 
@@ -1314,20 +1321,20 @@ input:checked + .slider:before {
   justify-content: center;
   font-size: 14px;
   font-weight: 600;
-  color: #888;
-  background: #E0E0E0;
+  color: var(--doc-muted);
+  background: var(--doc-border);
   border-radius: 4px;
   transition: all 0.2s;
 }
 
 .self-loop-item.expanded .self-loop-toggle {
-  background: #D0D0D0;
-  color: #666;
+  background: var(--doc-workbench-mid);
+  color: var(--doc-text);
 }
 
 .self-loop-item-content {
   padding: 12px;
-  border-top: 1px solid #EAEAEA;
+  border-top: 1px solid var(--doc-border);
 }
 
 .self-loop-item-content .detail-row {
