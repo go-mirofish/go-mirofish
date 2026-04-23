@@ -28,11 +28,33 @@ DEFAULT_REQUIREMENT = (
 )
 
 
-def request_json(url: str, *, method: str = "GET", body: bytes | None = None, headers: dict[str, str] | None = None) -> dict:
+def request_json(
+    url: str,
+    *,
+    method: str = "GET",
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    timeout: int = 120,
+) -> dict:
     req = urllib.request.Request(url, data=body, method=method, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        payload = resp.read().decode("utf-8")
-    return json.loads(payload)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            payload = resp.read().decode("utf-8")
+        return json.loads(payload)
+    except urllib.error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            json.dumps(
+                {
+                    "url": url,
+                    "method": method,
+                    "status": exc.code,
+                    "body": body_text,
+                    "timeout": timeout,
+                },
+                ensure_ascii=False,
+            )
+        ) from exc
 
 
 def encode_multipart(fields: dict[str, str], files: dict[str, pathlib.Path]) -> tuple[bytes, str]:
@@ -91,6 +113,7 @@ def main() -> int:
     parser.add_argument("--base-url", default="http://127.0.0.1:3000", help="Gateway base URL")
     parser.add_argument("--project-name", default="Hybrid benchmark smoke", help="Project name for ontology generation")
     parser.add_argument("--timeout-seconds", type=int, default=900)
+    parser.add_argument("--request-timeout", type=int, default=120)
     args = parser.parse_args()
 
     seed_path = SEED_PATH
@@ -113,6 +136,7 @@ def main() -> int:
         method="POST",
         body=multipart_body,
         headers={"Content-Type": content_type},
+        timeout=args.request_timeout,
     )
     project_id = ontology["data"]["project_id"]
 
@@ -133,6 +157,7 @@ def main() -> int:
         method="POST",
         body=json.dumps({"project_id": project_id}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
+        timeout=args.request_timeout,
     )
     graph_task_id = graph_build["data"]["task_id"]
 
@@ -156,6 +181,7 @@ def main() -> int:
         method="POST",
         body=json.dumps({"project_id": project_id, "graph_id": graph_id}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
+        timeout=args.request_timeout,
     )
     simulation_id = simulation_create["data"]["simulation_id"]
 
@@ -170,6 +196,7 @@ def main() -> int:
             }
         ).encode("utf-8"),
         headers={"Content-Type": "application/json"},
+        timeout=args.request_timeout,
     )
     prepare_task_id = prepare["data"]["task_id"]
 
@@ -191,6 +218,7 @@ def main() -> int:
         method="POST",
         body=json.dumps({"simulation_id": simulation_id, "max_rounds": 3}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
+        timeout=args.request_timeout,
     )
 
     simulation_status = poll_until(
@@ -206,17 +234,22 @@ def main() -> int:
         method="POST",
         body=json.dumps({"simulation_id": simulation_id}).encode("utf-8"),
         headers={"Content-Type": "application/json"},
+        timeout=args.request_timeout,
     )
     report_id = report_generate["data"]["report_id"]
+    report_task_id = report_generate["data"]["task_id"]
     report_status = poll_until(
-        lambda: request_json(f"{base_url}/api/report/generate/status?report_id={urllib.parse.quote(report_id)}"),
+        lambda: request_json(
+            f"{base_url}/api/report/generate/status?task_id={urllib.parse.quote(report_task_id)}&simulation_id={urllib.parse.quote(simulation_id)}",
+            timeout=args.request_timeout,
+        ),
         accepted={"completed"},
         timeout=args.timeout_seconds,
         interval=5,
         label="report generation",
     )
 
-    report = request_json(f"{base_url}/api/report/{report_id}")
+    report = request_json(f"{base_url}/api/report/{report_id}", timeout=args.request_timeout)
 
     summary = {
         "project_id": project_id,
