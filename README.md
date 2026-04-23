@@ -117,11 +117,6 @@ Supporting proof surfaces in this repo:
 - hybrid startup verification
 - the current status of first-party screenshots and demo capture
 
-Detailed benchmark and showcase pages:
-
-- [docs/hybrid/benchmark-report.md](./docs/hybrid/benchmark-report.md)
-- [docs/hybrid/showcase.md](./docs/hybrid/showcase.md)
-
 ## Production Split
 
 - Docs / landing / showcase: static
@@ -141,11 +136,6 @@ Current state:
 
 - Go owns the gateway and parts of the runtime/deployment surface
 - Python still owns the core engine and most business logic
-
-Migration docs:
-
-- [docs/hybrid/go-migration-plan.md](./docs/hybrid/go-migration-plan.md)
-- [docs/hybrid/go-parity-matrix.md](./docs/hybrid/go-parity-matrix.md)
 
 ## Hardware compatibility
 
