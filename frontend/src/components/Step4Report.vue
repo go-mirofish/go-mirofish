@@ -2600,7 +2600,14 @@ watch(() => props.reportId, (newId) => {
 
 /* Workflow Overview */
 .workflow-overview {
-  padding: 16px 20px 0 20px;
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  padding: 16px 20px 12px 20px;
+  background: color-mix(in srgb, var(--doc-surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--doc-border);
 }
 
 .workflow-metrics {
