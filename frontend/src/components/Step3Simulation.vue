@@ -87,7 +87,27 @@
       </div>
 
       <div class="action-controls">
-        <button 
+        <button
+          v-if="showStopAndSave"
+          type="button"
+          class="action-btn action-btn--stop"
+          :disabled="isStopping"
+          @click="handleStopSimulation"
+        >
+          <span v-if="isStopping" class="loading-spinner-small" aria-hidden="true"></span>
+          {{ isStopping ? $t('step3.savingCheckpoint') : $t('step3.stopAndSave') }}
+        </button>
+        <button
+          v-if="showRemoveSimulation"
+          type="button"
+          class="action-btn action-btn--danger"
+          :disabled="isRemoving || isGeneratingReport"
+          @click="handleRemoveSimulation"
+        >
+          <span v-if="isRemoving" class="loading-spinner-small" aria-hidden="true"></span>
+          {{ isRemoving ? $t('step3.removingSimulation') : $t('step3.removeSimulation') }}
+        </button>
+        <button
           class="action-btn primary"
           :disabled="phase !== 2 || isGeneratingReport"
           @click="handleNextStep"
@@ -279,6 +299,7 @@ import { useI18n } from 'vue-i18n'
 import {
   startSimulation,
   stopSimulation,
+  deleteSimulation,
   getRunStatus,
   getRunStatusDetail
 } from '../api/simulation'
@@ -307,6 +328,7 @@ const isGeneratingReport = ref(false)
 const phase = ref(0)
 const isStarting = ref(false)
 const isStopping = ref(false)
+const isRemoving = ref(false)
 const startError = ref(null)
 const runStatus = ref({})
 const allActions = ref([])
@@ -342,6 +364,20 @@ const redditElapsedTime = computed(() => {
   return formatElapsedTime(runStatus.value.reddit_current_round || 0)
 })
 
+/** Show while a run is in progress (rounds may still be zero). */
+const showStopAndSave = computed(() => {
+  if (phase.value !== 1 || isStarting.value) return false
+  const s = runStatus.value?.runner_status
+  if (!s) return true
+  return ['starting', 'running', 'stopping', 'paused'].includes(s)
+})
+
+const showRemoveSimulation = computed(() => {
+  if (!props.simulationId) return false
+  if (phase.value !== 2 || isStarting.value) return false
+  return !isStopping.value
+})
+
 // Methods
 const addLog = (msg) => {
   emit('add-log', msg)
@@ -357,6 +393,7 @@ const resetAllState = () => {
   startError.value = null
   isStarting.value = false
   isStopping.value = false
+  isRemoving.value = false
   stopPolling()
 }
 
@@ -425,7 +462,15 @@ const handleStopSimulation = async () => {
   try {
     const res = await stopSimulation({ simulation_id: props.simulationId })
     
-    if (res.success) {
+    if (res.success && res.data) {
+      runStatus.value = { ...runStatus.value, ...res.data }
+      addLog(
+        t('step3.checkpointSaved', {
+          round: res.data.current_round ?? 0,
+          plazaR: res.data.twitter_current_round ?? 0,
+          communityR: res.data.reddit_current_round ?? 0
+        })
+      )
       addLog(t('log.simStoppedSuccess'))
       phase.value = 2
       stopPolling()
@@ -437,6 +482,34 @@ const handleStopSimulation = async () => {
     addLog(t('log.stopException', { error: err.message }))
   } finally {
     isStopping.value = false
+  }
+}
+
+const handleRemoveSimulation = async () => {
+  if (!props.simulationId) return
+  if (!window.confirm(t('step3.removeSimulationConfirm'))) {
+    return
+  }
+
+  isRemoving.value = true
+  addLog(t('step3.removeSimulationInProgress'))
+  try {
+    const res = await deleteSimulation({ simulation_id: props.simulationId })
+    if (res.success) {
+      addLog(t('step3.removeSimulationSuccess'))
+      if (res.data?.warnings?.length) {
+        addLog(String(res.data.warnings))
+      }
+      stopPolling()
+      resetAllState()
+      emit('go-back', { simRemoved: true, projectId: props.projectData?.project_id })
+    } else {
+      addLog(t('step3.removeSimulationFailed', { error: res.error || t('common.unknownError') }))
+    }
+  } catch (err) {
+    addLog(t('step3.removeSimulationFailed', { error: err.message }))
+  } finally {
+    isRemoving.value = false
   }
 }
 
@@ -675,7 +748,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--doc-border);
   z-index: 10;
   height: 64px;
 }
@@ -709,8 +782,8 @@ onUnmounted(() => {
 
 .platform-status.completed {
   opacity: 1;
-  border-color: #1A936F;
-  background: #F2FAF6;
+  border-color: var(--doc-badge-ok-fg, #1a936f);
+  background: var(--doc-badge-ok-bg, #e8f5e9);
 }
 
 /* Actions Tooltip */
@@ -721,10 +794,10 @@ onUnmounted(() => {
   transform: translateX(-50%);
   margin-top: 8px;
   padding: 10px 14px;
-  background: var(--doc-text, #111827);
-  color: var(--doc-bg, #f4f4f5);
+  background: var(--doc-tooltip-surface, #16181f);
+  color: var(--doc-tooltip-fg, #f4f4f6);
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px color-mix(in srgb, #000 35%, transparent);
   opacity: 0;
   visibility: hidden;
   transition: all 0.2s ease;
@@ -741,7 +814,7 @@ onUnmounted(() => {
   transform: translateX(-50%);
   border-left: 6px solid transparent;
   border-right: 6px solid transparent;
-  border-bottom: 6px solid var(--doc-text, #111827);
+  border-bottom: 6px solid var(--doc-tooltip-surface, #16181f);
 }
 
 .platform-status:hover .actions-tooltip {
@@ -752,7 +825,7 @@ onUnmounted(() => {
 .tooltip-title {
   font-size: 10px;
   font-weight: 600;
-  color: var(--doc-muted);
+  color: var(--doc-tooltip-muted, #a1a1aa);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin-bottom: 8px;
@@ -768,9 +841,9 @@ onUnmounted(() => {
   font-size: 10px;
   font-weight: 600;
   padding: 3px 8px;
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--doc-tooltip-pill-bg, rgba(255, 255, 255, 0.14));
   border-radius: 2px;
-  color: #FFF;
+  color: var(--doc-tooltip-pill-fg, #fafafa);
   letter-spacing: 0.03em;
 }
 
@@ -830,6 +903,15 @@ onUnmounted(() => {
   align-items: center;
 }
 
+/* Action bar */
+.action-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 /* Action Button */
 .action-btn {
   display: inline-flex;
@@ -838,7 +920,7 @@ onUnmounted(() => {
   padding: 10px 20px;
   font-size: 13px;
   font-weight: 600;
-  border: none;
+  border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -846,18 +928,41 @@ onUnmounted(() => {
   letter-spacing: 0.05em;
 }
 
+.action-btn--stop {
+  background: var(--doc-upload-surface, var(--doc-surface));
+  color: var(--doc-text);
+  border-color: var(--doc-border);
+}
+
+.action-btn--stop:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #dc2626 45%, var(--doc-border));
+  color: #dc2626;
+  background: color-mix(in srgb, #dc2626 8%, var(--doc-surface));
+}
+
 .action-btn.primary {
-  background: #000;
-  color: #FFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #fff);
 }
 
 .action-btn.primary:hover:not(:disabled) {
-  background: #333;
+  filter: brightness(1.12);
 }
 
 .action-btn:disabled {
   opacity: 0.3;
   cursor: not-allowed;
+}
+
+.action-btn--danger {
+  color: #dc2626;
+  background: var(--doc-upload-surface, var(--doc-surface));
+  border-color: color-mix(in srgb, #dc2626 40%, var(--doc-border));
+}
+
+.action-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #dc2626 10%, var(--doc-surface));
+  border-color: #dc2626;
 }
 
 /* --- Main Content Area --- */
@@ -872,10 +977,11 @@ onUnmounted(() => {
 .timeline-header {
   position: sticky;
   top: 0;
-  background: rgba(255, 255, 255, 0.9);
+  background: color-mix(in srgb, var(--doc-surface) 88%, transparent);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   padding: 12px 24px;
-  border-bottom: 1px solid #EAEAEA;
+  border-bottom: 1px solid var(--doc-border);
   z-index: 5;
   display: flex;
   justify-content: center;
@@ -909,7 +1015,7 @@ onUnmounted(() => {
   gap: 4px;
 }
 
-.breakdown-divider { color: #DDD; }
+.breakdown-divider { color: var(--doc-border); }
 .breakdown-item.twitter { color: var(--doc-text); }
 .breakdown-item.reddit { color: var(--doc-text); }
 
@@ -928,7 +1034,7 @@ onUnmounted(() => {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #EAEAEA; /* Cleaner line */
+  background: var(--doc-border);
   transform: translateX(-50%);
 }
 
@@ -947,7 +1053,7 @@ onUnmounted(() => {
   width: 10px;
   height: 10px;
   background: var(--doc-surface);
-  border: 1px solid #CCC;
+  border: 1px solid var(--doc-border);
   border-radius: 50%;
   transform: translateX(-50%);
   z-index: 2;
@@ -963,8 +1069,8 @@ onUnmounted(() => {
   border-radius: 50%;
 }
 
-.timeline-item.twitter .marker-dot { background: #000; }
-.timeline-item.reddit .marker-dot { background: #000; }
+.timeline-item.twitter .marker-dot { background: var(--doc-text); }
+.timeline-item.reddit .marker-dot { background: var(--doc-text); }
 .timeline-item.twitter .timeline-marker { border-color: var(--doc-text); }
 .timeline-item.reddit .timeline-marker { border-color: var(--doc-text); }
 
@@ -981,8 +1087,8 @@ onUnmounted(() => {
 }
 
 .timeline-card:hover {
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-  border-color: #DDD;
+  box-shadow: 0 4px 12px color-mix(in srgb, #000 8%, transparent);
+  border-color: var(--doc-muted);
 }
 
 /* Left side (Twitter) */
@@ -1012,7 +1118,7 @@ onUnmounted(() => {
   align-items: flex-start;
   margin-bottom: 12px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #F5F5F5;
+  border-bottom: 1px solid var(--doc-border);
 }
 
 .agent-info {
@@ -1024,8 +1130,8 @@ onUnmounted(() => {
 .avatar-placeholder {
   width: 24px;
   height: 24px;
-  background: #000;
-  color: #FFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #fff);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1064,10 +1170,10 @@ onUnmounted(() => {
 }
 
 /* Monochromatic Badges */
-.badge-post { background: var(--doc-workbench-mid); color: var(--doc-text); border-color: #E0E0E0; }
-.badge-comment { background: var(--doc-workbench-mid); color: var(--doc-muted); border-color: #E0E0E0; }
+.badge-post { background: var(--doc-workbench-mid); color: var(--doc-text); border-color: var(--doc-border); }
+.badge-comment { background: var(--doc-workbench-mid); color: var(--doc-muted); border-color: var(--doc-border); }
 .badge-action { background: var(--doc-surface); color: var(--doc-muted); border: 1px solid var(--doc-border); }
-.badge-meta { background: var(--doc-bg); color: var(--doc-muted); border: 1px dashed #DDD; }
+.badge-meta { background: var(--doc-bg); color: var(--doc-muted); border: 1px dashed var(--doc-border); }
 .badge-idle { opacity: 0.5; }
 
 .content-text {
@@ -1085,7 +1191,7 @@ onUnmounted(() => {
 /* Info Blocks (Quote, Repost, etc) */
 .quoted-block, .repost-content {
   background: var(--doc-code-bg);
-  border: 1px solid #EEE;
+  border: 1px solid var(--doc-border);
   padding: 10px 12px;
   border-radius: 2px;
   margin-top: 8px;
@@ -1121,7 +1227,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: flex-end;
   font-size: 10px;
-  color: #BBB;
+  color: var(--doc-muted);
   font-family: 'JetBrains Mono', monospace;
 }
 
@@ -1135,7 +1241,7 @@ onUnmounted(() => {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  color: #CCC;
+  color: var(--doc-muted);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -1150,8 +1256,8 @@ onUnmounted(() => {
 }
 
 @keyframes ripple {
-  0% { transform: scale(0.8); opacity: 1; border-color: #CCC; }
-  100% { transform: scale(2.5); opacity: 0; border-color: #EAEAEA; }
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
 }
 
 /* Animation */
@@ -1217,8 +1323,8 @@ onUnmounted(() => {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #FFF;
+  border: 2px solid color-mix(in srgb, var(--doc-cta-primary-fg) 35%, transparent);
+  border-top-color: var(--doc-cta-primary-fg);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin-right: 6px;
