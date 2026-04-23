@@ -1,0 +1,903 @@
+/**
+ * go-mirofish documentation-style shell (Vue).
+ * Visual language inspired by doc sites + subtle “spotlight / gradient border” motion
+ * (patterns common in UI component libraries; implemented in plain CSS for this stack).
+ */
+:root {
+  --doc-bg: #f4f4f5;
+  --doc-surface: #ffffff;
+  --doc-border: #e5e7eb;
+  --doc-text: #111827;
+  --doc-muted: #6b7280;
+  /* Golang brand blue: https://go.dev/brand/ */
+  --doc-accent: #00add8;
+  --doc-accent-soft: rgba(0, 173, 216, 0.15);
+  --orange: #00add8;
+  --doc-radius: 12px;
+  --doc-font-sans: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
+  --doc-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --doc-topbar-surface: rgba(255, 255, 255, 0.85);
+  --doc-hero-grad-1: #111827;
+  --doc-hero-grad-2: #4b5563;
+  --doc-code-bg: #f3f4f6;
+  --doc-inline-code-bg: #f3f4f6;
+  --doc-shadow-soft: 0 16px 48px -20px rgba(0, 0, 0, 0.12);
+  --doc-upload-surface: #f9fafb;
+  --doc-dashed: #d1d5db;
+  --doc-cta-locked-bg: #e5e7eb;
+  --doc-cta-locked-fg: #9ca3af;
+  --doc-cta-primary-bg: #111827;
+  --doc-cta-primary-fg: #ffffff;
+  --doc-workbench-mid: #f5f5f5;
+  /* Workbench system console + Step panels (theme with data-theme) */
+  --doc-console-bg: #0a0a0c;
+  --doc-console-fg: #d4d4d8;
+  --doc-console-muted: #9ca3af;
+  --doc-console-border: #27272a;
+  --doc-console-scroll: #3f3f46;
+  --doc-badge-ok-bg: #e8f5e9;
+  --doc-badge-ok-fg: #2e7d32;
+  --doc-badge-pending-bg: #f3f4f6;
+  --doc-badge-pending-fg: #6b7280;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+  --doc-bg: #0b0c0f;
+  --doc-surface: #12141a;
+  --doc-border: #2a2f3a;
+  --doc-text: #e4e4e7;
+  --doc-muted: #9ca3af;
+  --doc-accent: #4dd0f5;
+  --doc-accent-soft: rgba(77, 208, 245, 0.18);
+  --orange: #4dd0f5;
+  --doc-topbar-surface: rgba(12, 14, 18, 0.88);
+  --doc-hero-grad-1: #e4e4e7;
+  --doc-hero-grad-2: #71717a;
+  --doc-code-bg: #1a1d25;
+  --doc-inline-code-bg: #2a2d36;
+  --doc-shadow-soft: 0 16px 48px -20px rgba(0, 0, 0, 0.5);
+  --doc-upload-surface: #151821;
+  --doc-dashed: #3f4654;
+  --doc-cta-locked-bg: #1f242e;
+  --doc-cta-locked-fg: #71717a;
+  --doc-cta-primary-bg: #00add8;
+  --doc-cta-primary-fg: #0a0a0a;
+  --doc-workbench-mid: #1a1d25;
+  --doc-console-bg: #111318;
+  --doc-console-fg: #e4e4e7;
+  --doc-console-muted: #9ca3af;
+  --doc-console-border: #2a2f3a;
+  --doc-console-scroll: #4b5563;
+  --doc-badge-ok-bg: #14261a;
+  --doc-badge-ok-fg: #4ade80;
+  --doc-badge-pending-bg: #1a1d25;
+  --doc-badge-pending-fg: #9ca3af;
+}
+
+.doc-site {
+  min-height: 100vh;
+  background: var(--doc-bg);
+  color: var(--doc-text);
+  font-family: var(--doc-font-sans);
+}
+
+.doc-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--doc-topbar-surface);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--doc-border);
+}
+
+.doc-topbar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.doc-topbar-brand {
+  font-family: var(--doc-font-mono);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.02em;
+}
+
+a.doc-topbar-brand-link {
+  text-decoration: none;
+  color: inherit;
+}
+a.doc-topbar-brand-link:hover {
+  color: var(--doc-accent);
+}
+
+.doc-topbar-nav-link {
+  font-size: 0.8rem;
+  color: var(--doc-text);
+  text-decoration: none;
+  font-family: var(--doc-font-mono);
+}
+.doc-topbar-nav-link:hover {
+  color: var(--doc-accent);
+}
+.doc-topbar-nav-link--active,
+.doc-topbar-nav-link.router-link-exact-active {
+  color: var(--doc-accent);
+  font-weight: 600;
+}
+
+.doc-topbar-meta {
+  font-size: 0.75rem;
+  color: var(--doc-muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.doc-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.doc-topbar-actions a {
+  font-size: 0.8rem;
+  color: var(--doc-text);
+  text-decoration: none;
+  font-family: var(--doc-font-mono);
+}
+.doc-topbar-actions a:hover {
+  color: var(--doc-accent);
+}
+
+.doc-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.doc-hero {
+  display: grid;
+  grid-template-columns: 1fr minmax(200px, 340px);
+  gap: 2.5rem;
+  align-items: start;
+  margin-bottom: 3rem;
+  padding-bottom: 2.5rem;
+  border-bottom: 1px solid var(--doc-border);
+}
+
+.doc-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.doc-pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--doc-font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--doc-border);
+  background: var(--doc-surface);
+}
+.doc-pill--accent {
+  background: var(--doc-accent);
+  color: #fff;
+  border-color: var(--doc-accent);
+}
+.doc-pill--muted {
+  color: var(--doc-muted);
+}
+
+.doc-h1 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 0 0 1.25rem;
+}
+.doc-h1-line {
+  display: block;
+}
+.doc-h1-gradient {
+  display: block;
+  background: linear-gradient(90deg, var(--doc-hero-grad-1), var(--doc-hero-grad-2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.doc-prose {
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--doc-muted);
+  max-width: 52ch;
+}
+.doc-prose p {
+  margin: 0 0 1rem;
+}
+.doc-slogan {
+  border-left: 3px solid var(--doc-accent);
+  padding-left: 0.85rem;
+  color: var(--doc-text);
+  font-weight: 500;
+}
+
+.doc-hero-media {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1rem;
+}
+.doc-hero-logo {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  filter: drop-shadow(0 12px 32px rgba(0, 0, 0, 0.08));
+}
+
+.doc-hero-cta {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 320px;
+}
+
+.doc-anchor-btn {
+  border: 1px solid var(--doc-border);
+  background: var(--doc-surface);
+  color: var(--doc-accent);
+  font-family: var(--doc-font-mono);
+  font-size: 0.75rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  line-height: 1.25;
+  box-sizing: border-box;
+  min-height: 2.25rem;
+}
+a.doc-anchor-btn,
+a.doc-github-stars {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.doc-github-stars {
+  color: var(--doc-text);
+  gap: 0.35rem;
+}
+.doc-github-stars .doc-github-stars-icon {
+  color: #ca8a04;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.doc-github-stars .doc-github-stars-count {
+  color: var(--doc-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.doc-github-stars .doc-github-stars-count--loading {
+  color: var(--doc-muted);
+  font-weight: 500;
+}
+.doc-anchor-btn:hover {
+  border-color: var(--doc-accent);
+  box-shadow: 0 4px 14px var(--doc-accent-soft);
+}
+.doc-github-stars:hover {
+  border-color: var(--doc-accent);
+  box-shadow: 0 4px 14px var(--doc-accent-soft);
+  color: var(--doc-text);
+}
+
+.doc-content-grid {
+  display: grid;
+  grid-template-columns: 1fr min(400px, 100%);
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.doc-article {
+  background: var(--doc-surface);
+  border: 1px solid var(--doc-border);
+  border-radius: var(--doc-radius);
+  padding: 1.75rem;
+}
+
+.doc-h2 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--doc-muted);
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--doc-border);
+}
+.doc-h2:not(:first-child) {
+  margin-top: 2rem;
+}
+
+.doc-lead {
+  font-size: 0.95rem;
+  color: var(--doc-muted);
+  line-height: 1.65;
+  margin: 0 0 1.25rem;
+}
+
+.doc-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.doc-metric {
+  flex: 1;
+  min-width: 140px;
+  padding: 1rem 1.1rem;
+  border-radius: 8px;
+  border: 1px solid var(--doc-border);
+  background: var(--doc-bg);
+}
+.doc-metric-val {
+  font-family: var(--doc-font-mono);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--doc-text);
+}
+.doc-metric-label {
+  font-size: 0.75rem;
+  color: var(--doc-muted);
+  margin-top: 0.25rem;
+}
+
+.doc-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.doc-step {
+  display: grid;
+  grid-template-columns: 2rem 1fr;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+}
+.doc-step-num {
+  font-family: var(--doc-font-mono);
+  font-weight: 700;
+  color: var(--doc-text);
+  font-size: 0.85rem;
+}
+.doc-step-title {
+  font-weight: 600;
+  color: var(--doc-text);
+}
+.doc-step-desc {
+  color: var(--doc-muted);
+  font-size: 0.8rem;
+  margin-top: 0.2rem;
+  line-height: 1.45;
+}
+
+.doc-aside {
+  position: sticky;
+  top: 4.5rem;
+}
+.doc-aside-kicker {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--doc-muted);
+  margin: 0 0 0.35rem;
+}
+.doc-aside-desc {
+  font-size: 0.8rem;
+  color: var(--doc-muted);
+  line-height: 1.5;
+  margin: 0 0 1rem;
+}
+
+/* Subtle animated border (MCP-style “spotlight” feel, no React runtime) */
+.doc-playground-shell {
+  position: relative;
+  border-radius: calc(var(--doc-radius) + 2px);
+  padding: 1px;
+  background: linear-gradient(
+    130deg,
+    rgba(0, 173, 216, 0.5),
+    rgba(99, 102, 241, 0.35),
+    rgba(6, 182, 212, 0.4),
+    rgba(0, 173, 216, 0.5)
+  );
+  background-size: 200% 200%;
+  animation: doc-borderShift 10s ease infinite;
+}
+@keyframes doc-borderShift {
+  0%,
+  100% {
+    background-position: 0% 40%;
+  }
+  50% {
+    background-position: 100% 60%;
+  }
+}
+
+.doc-playground-inner {
+  background: var(--doc-surface);
+  border-radius: var(--doc-radius);
+  overflow: hidden;
+  box-shadow: var(--doc-shadow-soft);
+}
+
+/* Home #playground: flat doc flow, no card chrome or rounded frame */
+#playground.doc-content-grid .doc-article {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+#playground .doc-metric {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.5rem 0;
+}
+#playground .doc-playground-shell {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  animation: none;
+}
+#playground .doc-playground-inner {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+#playground .upload-zone,
+#playground .upload-icon,
+#playground .file-item,
+#playground .input-wrapper,
+#playground .start-engine-btn {
+  border-radius: 0;
+}
+
+.doc-history-wrap {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--doc-border);
+}
+.doc-history-wrap .doc-h2 {
+  margin-bottom: 1.25rem;
+}
+
+.highlight-bold {
+  color: var(--doc-text);
+  font-weight: 700;
+}
+.highlight-orange {
+  color: var(--doc-accent);
+  font-weight: 600;
+  font-family: var(--doc-font-mono);
+}
+.highlight-code {
+  background: var(--doc-inline-code-bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  font-family: var(--doc-font-mono);
+  font-size: 0.9em;
+}
+
+.blinking-cursor {
+  color: var(--doc-accent);
+  animation: doc-blink 1s step-end infinite;
+}
+@keyframes doc-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Workbench (MainView) alignment */
+.doc-workbench {
+  background: var(--doc-bg) !important;
+  font-family: var(--doc-font-sans) !important;
+  color: var(--doc-text) !important;
+}
+.doc-workbench .app-header {
+  background: var(--doc-topbar-surface) !important;
+  backdrop-filter: blur(8px);
+  border-bottom-color: var(--doc-border) !important;
+  color: var(--doc-text) !important;
+}
+.doc-workbench .brand {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--doc-text) !important;
+}
+.doc-workbench .view-switcher {
+  background: var(--doc-workbench-mid) !important;
+  border: 1px solid var(--doc-border);
+}
+.doc-workbench .switch-btn {
+  color: var(--doc-muted) !important;
+}
+.doc-workbench .switch-btn.active {
+  background: var(--doc-surface) !important;
+  color: var(--doc-text) !important;
+}
+.doc-workbench .status-indicator,
+.doc-workbench .step-num,
+.doc-workbench .step-name,
+.doc-workbench .header-right,
+.doc-workbench .workflow-step {
+  color: var(--doc-muted) !important;
+}
+.doc-workbench .step-name {
+  color: var(--doc-text) !important;
+  font-weight: 700;
+}
+.doc-workbench .step-divider {
+  background-color: var(--doc-border) !important;
+}
+.doc-workbench .panel-wrapper.left {
+  border-right-color: var(--doc-border) !important;
+  background: var(--doc-surface);
+}
+.doc-workbench .panel-wrapper.right {
+  background: var(--doc-bg);
+  color: var(--doc-text);
+}
+
+/* Documentation site (/docs) */
+.docs-view .docs-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem 4rem;
+  gap: 2.5rem;
+  align-items: start;
+}
+
+.docs-sidebar {
+  position: sticky;
+  top: 3.5rem;
+  padding-top: 1.5rem;
+  border-right: 1px solid var(--doc-border);
+  padding-right: 1.25rem;
+  min-height: 50vh;
+}
+
+.docs-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.docs-nav-group {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--doc-muted);
+  margin: 1rem 0 0.35rem;
+}
+.docs-nav-group:first-child {
+  margin-top: 0;
+}
+
+.docs-nav-item {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--doc-muted);
+  text-decoration: none;
+  padding: 0.35rem 0.4rem;
+  border-radius: 4px;
+  line-height: 1.35;
+  transition: color 0.15s, background 0.15s;
+}
+.docs-nav-item:hover {
+  color: var(--doc-text);
+  background: rgba(0, 0, 0, 0.03);
+}
+.docs-nav-item.active,
+.docs-nav-item.router-link-exact-active,
+.docs-nav-item.router-link-active {
+  color: var(--doc-accent);
+  font-weight: 600;
+  background: var(--doc-accent-soft);
+}
+
+.docs-main {
+  min-width: 0;
+  padding-top: 1.5rem;
+}
+
+.docs-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--doc-border);
+}
+
+.docs-page-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.docs-article {
+  max-width: 75ch;
+}
+
+.docs-overview-logo {
+  display: block;
+  width: 100%;
+  max-width: min(36rem, 100%);
+  height: auto;
+  margin: 0 0 1.25rem;
+  border-radius: 8px;
+}
+
+.docs-lead {
+  font-size: 1.05rem;
+  color: var(--doc-muted);
+  line-height: 1.65;
+  margin: 0 0 1.5rem;
+}
+.docs-h2 {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--doc-muted);
+  margin: 1.75rem 0 0.5rem;
+}
+.docs-p,
+.docs-article--md p {
+  margin: 0 0 1rem;
+  line-height: 1.7;
+  color: var(--doc-text);
+  font-size: 0.95rem;
+}
+.docs-list {
+  margin: 0 0 1.25rem 1.1rem;
+  padding: 0;
+  line-height: 1.7;
+  font-size: 0.95rem;
+  color: var(--doc-text);
+}
+.docs-inline-link {
+  color: var(--doc-accent);
+  font-weight: 500;
+  text-decoration: none;
+  font-family: var(--doc-font-mono);
+  font-size: 0.9rem;
+}
+.docs-inline-link:hover {
+  text-decoration: underline;
+}
+
+/* Markdown body (imported from /docs). Use plain descendants here; :deep() only works in Vue scoped SFC, not in global CSS. */
+.docs-article--md {
+  max-width: none;
+}
+.docs-article--md h1 {
+  display: none;
+}
+.docs-article--md h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--doc-border);
+  color: var(--doc-text);
+}
+.docs-article--md h2:first-of-type {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+.docs-article--md h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 1.25rem 0 0.5rem;
+}
+.docs-article--md p,
+.docs-article--md li {
+  line-height: 1.7;
+  font-size: 0.95rem;
+  color: var(--doc-text);
+}
+.docs-article--md a {
+  color: var(--doc-accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+.docs-article--md a:hover {
+  text-decoration: underline;
+}
+.docs-article--md pre {
+  background: var(--doc-code-bg);
+  border: 1px solid var(--doc-border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  font-family: var(--doc-font-mono);
+}
+.docs-article--md code {
+  font-family: var(--doc-font-mono);
+  font-size: 0.85em;
+  background: var(--doc-inline-code-bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+.docs-article--md pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.8rem;
+}
+.docs-article--md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  margin: 1rem 0;
+}
+.docs-article--md th,
+.docs-article--md td {
+  border: 1px solid var(--doc-border);
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+}
+.docs-article--md blockquote {
+  margin: 1rem 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--doc-border);
+  color: var(--doc-muted);
+  font-size: 0.9rem;
+}
+.docs-article--md ul {
+  margin: 0.5rem 0 1rem 1.1rem;
+}
+.docs-article--md hr {
+  border: none;
+  border-top: 1px solid var(--doc-border);
+  margin: 1.5rem 0;
+}
+
+/* GitHub-style alerts (preprocessed in DocsView) */
+.docs-article--md .doc-alert {
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--doc-border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  color: var(--doc-text);
+}
+.docs-article--md .doc-alert p:first-of-type {
+  margin-top: 0;
+}
+.docs-article--md .doc-alert p:last-of-type,
+.docs-article--md .doc-alert ul:last-child {
+  margin-bottom: 0;
+}
+.docs-article--md .doc-alert--note {
+  border-color: rgba(0, 122, 255, 0.35);
+  background: rgba(0, 122, 255, 0.06);
+}
+.docs-article--md .doc-alert--tip {
+  border-color: rgba(52, 199, 89, 0.45);
+  background: rgba(52, 199, 89, 0.08);
+}
+.docs-article--md .doc-alert--important {
+  border-color: rgba(255, 149, 0, 0.45);
+  background: rgba(255, 149, 0, 0.08);
+}
+.docs-article--md .doc-alert--warning,
+.docs-article--md .doc-alert--caution {
+  border-color: rgba(255, 59, 48, 0.35);
+  background: rgba(255, 59, 48, 0.06);
+}
+.docs-article--md .doc-alert ul {
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 900px) {
+  .docs-view .docs-layout {
+    grid-template-columns: 1fr;
+  }
+  .docs-sidebar {
+    position: static;
+    border-right: none;
+    border-bottom: 1px solid var(--doc-border);
+    padding: 0 0 1rem;
+    min-height: 0;
+  }
+  .docs-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+  }
+  .docs-nav-group {
+    width: 100%;
+    margin-top: 0.75rem;
+  }
+  .docs-nav-group:first-child {
+    margin-top: 0;
+  }
+  .docs-nav-item {
+    padding: 0.25rem 0.5rem;
+  }
+}
+
+@media (max-width: 1024px) {
+  .doc-hero {
+    grid-template-columns: 1fr;
+  }
+  .doc-hero-media {
+    align-items: flex-start;
+  }
+  .doc-content-grid {
+    grid-template-columns: 1fr;
+  }
+  .doc-aside {
+    position: static;
+  }
+}
+
+/* Site-wide maintainer footer (Home, Docs, MainView, Process) */
+.doc-site-footer {
+  border-top: 1px solid var(--doc-border);
+  padding: 1.25rem 1.5rem 2rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--doc-muted);
+  font-family: var(--doc-font-mono, ui-monospace, monospace);
+  background: var(--doc-bg);
+  flex-shrink: 0;
+}
+.doc-site-footer__line {
+  margin: 0;
+  line-height: 1.5;
+}
+.doc-site-footer__link {
+  color: var(--doc-accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.doc-site-footer__link:hover {
+  text-decoration: underline;
+}
+.doc-site-footer--compact {
+  padding: 0.45rem 1rem 0.55rem;
+  font-size: 0.7rem;
+}

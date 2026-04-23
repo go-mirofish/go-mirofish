@@ -8,6 +8,12 @@ cd "$ROOT" || exit 1
 if [ -n "$HOME" ]; then
   export PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin"
 fi
+if [ -z "$GOCACHE" ]; then
+  export GOCACHE="${TMPDIR:-/tmp}/go-build-cache"
+fi
+if [ -z "$UV_CACHE_DIR" ]; then
+  export UV_CACHE_DIR="${TMPDIR:-/tmp}/uv-cache"
+fi
 
 # Go: vet (only if gateway/ exists)
 if [ -d "gateway" ]; then
@@ -24,14 +30,27 @@ if [ -n "$PY_FILES" ]; then
     [ -z "$f" ] && continue
     [ -f "$ROOT/$f" ] || continue
     if command -v uv >/dev/null 2>&1; then
-      uv run python -m py_compile "$ROOT/$f"
+      if uv run python -c "import sys" >/dev/null 2>&1; then
+        uv run python -m py_compile "$ROOT/$f"
+      elif command -v python3 >/dev/null 2>&1; then
+        python3 -m py_compile "$ROOT/$f"
+      elif command -v python >/dev/null 2>&1; then
+        python -m py_compile "$ROOT/$f"
+      else
+        echo "pre-commit: uv is installed but not usable, and no system Python was found; skipping Python syntax check for $f"
+      fi
     elif [ -x ".venv/bin/python" ]; then
       .venv/bin/python -m py_compile "$ROOT/$f"
     elif [ -f ".venv/Scripts/python.exe" ]; then
       .venv/Scripts/python.exe -m py_compile "$ROOT/$f"
+    elif command -v python3 >/dev/null 2>&1; then
+      python3 -m py_compile "$ROOT/$f"
+    elif command -v python >/dev/null 2>&1; then
+      python -m py_compile "$ROOT/$f"
     else
-      echo "pre-commit: uv not in PATH and backend/.venv missing — skipping Python syntax check for $f"
-      echo "  Fix: install uv and run: cd backend && uv sync"
+      echo "pre-commit: uv not in PATH and backend/.venv missing; skipping Python syntax check for $f"
+      echo "  Fix: npm run setup:backend  (from repo root)"
+      echo "  Or:  cd backend && uv sync  (if uv is installed)"
     fi
   done
   cd "$ROOT" || exit 1

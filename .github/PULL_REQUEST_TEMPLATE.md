@@ -1,18 +1,18 @@
 <!--
 Full narrative: docs/contributing/github-pr-6-layer.md
 Commits: docs/contributing/commit-messages.md
-GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
+GitHub only loads this file name for PR bodies, not PR_TEMPLATE.md.
 -->
 
 ## PR summary
 
 **Closes:** #<!-- issue number -->
 
-**Commit style:** `type(scope): subject` — see [commit-messages.md](../docs/contributing/commit-messages.md).
+**Commit style:** `type(scope): subject`. See [commit-messages.md](../docs/contributing/commit-messages.md).
 
 ---
 
-## Layer 1 — Intent parsing
+## Layer 1: Intent parsing
 
 **Primary goal**
 
@@ -37,7 +37,7 @@ GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 
 ---
 
-## Layer 2 — Knowledge retrieval
+## Layer 2: Knowledge retrieval
 
 **Skills / learning**
 
@@ -46,7 +46,7 @@ GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 
 **Effort**
 
-<!-- S / M / L — rough -->
+<!-- S / M / L, rough -->
 
 **Resources reviewed**
 
@@ -59,7 +59,7 @@ GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 
 ---
 
-## Layer 3 — Constraint analysis
+## Layer 3: Constraint analysis
 
 **Dependencies**
 
@@ -76,7 +76,7 @@ GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 
 ---
 
-## Layer 4 — Solution generation
+## Layer 4: Solution generation
 
 **Approach**
 
@@ -89,14 +89,14 @@ GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 - [ ] Tests / verification performed
 - [ ] No secrets in repo
 
-**Acceptance criteria (from issue — check when done)**
+**Acceptance criteria (from issue; check when done)**
 
 - [ ]
 - [ ]
 
 ---
 
-## Layer 5 — What this PR does
+## Layer 5: What this PR does
 
 **Changes**
 
@@ -114,7 +114,7 @@ GitHub only loads this file name for PR bodies — not PR_TEMPLATE.md.
 
 ---
 
-## Layer 6 — Validation & review
+## Layer 6: Validation & review
 
 **How tested**
 

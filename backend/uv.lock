@@ -1,8 +1,7 @@
 version = 1
 revision = 3
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 resolution-markers = [
-    "python_full_version >= '3.12'",
     "python_full_version < '3.12'",
 ]
 
@@ -1238,7 +1237,7 @@ wheels = [
 ]
 
 [[package]]
-name = "mirofish-backend"
+name = "go-mirofish-backend"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

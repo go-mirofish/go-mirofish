@@ -2,7 +2,7 @@
 .DS_Store
 Thumbs.db
 
-# 环境变量（保护敏感信息）
+# Environment variables (protect sensitive information)
 .env
 .env.local
 .env.*.local
@@ -24,6 +24,9 @@ ENV/
 dist/
 build/
 
+# Go gateway binary (built next to gateway/go.mod)
+gateway/bin/
+
 # Node.js
 node_modules/
 npm-debug.log*
@@ -36,7 +39,7 @@ yarn-error.log*
 *.swp
 *.swo
 
-# 测试
+# Tests
 .pytest_cache/
 .coverage
 htmlcov/
@@ -44,17 +47,19 @@ htmlcov/
 # Cursor
 .cursor/
 .claude/
+.omx/
 
-# 文档与测试程序
+# Local docs and test programs
 mydoc/
 mytest/
+docs/hybrid/*
 
-# 日志文件
+# Log files
 backend/logs/
 *.log
 
-# 上传文件
+# Uploaded files
 backend/uploads/
 
-# Docker 数据
+# Docker data
 data/

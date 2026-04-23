@@ -1,19 +1,27 @@
 # Installation
 
-This page is the **Getting Started → Installation** chapter for [go.mirofish.ai](https://go.mirofish.ai). It assumes you have never run MiroFish.
+For [go.mirofish.ai](https://go.mirofish.ai), from zero to a running stack.
 
-## System requirements
+> [!NOTE]
+> **Prerequisites**
+> - **Python 3.11.x** on your machine when you run the backend from source (not 3.12+; backend deps such as `camel-oasis` do not install on newer Pythons yet; see `requires-python` in `backend/pyproject.toml`).
+> - **Node.js 18+** if you use the `npm` dev workflow (`npm run dev`).
+> - **LLM + Zep** keys in `.env` for the default cloud path, unless you go fully local. See [Ollama](../configuration/ollama.md) and [OpenAI-compatible providers](../configuration/providers.md).
+> - **[uv](https://docs.astral.sh/uv/)** is optional; the repo can create **`backend/.venv`** with `pip` via `npm run setup:backend` instead.
 
-| Requirement | Minimum | Notes |
-| --- | --- | --- |
-| OS | Windows, macOS, or Linux | 64-bit recommended |
-| RAM | 4GB+ | 8GB+ for comfortable multi-agent runs |
-| Python | 3.11–3.12 | Used by the backend |
-| Node.js | 18+ | **Only for the current dev workflow** (`npm run dev`) |
-| [uv](https://docs.astral.sh/uv/) | Latest | Recommended Python env + runner for the backend |
-| Docker (optional) | Docker Engine + Compose plugin | Alternative to local Node/Python setup |
+> [!IMPORTANT]
+> Use **`backend/.venv` only**. Do not use a separate `.venv` at the **repository root**. Wrong Python version? Delete `backend/.venv` and run `npm run setup:backend` again.
 
-You also need valid **LLM** and **Zep** credentials unless you use a fully local LLM path (see [Ollama setup](../configuration/ollama.md)).
+## System requirements (summary)
+
+| Item | Notes |
+| --- | --- |
+| OS | Windows, macOS, or Linux (64-bit) |
+| RAM | 4GB+; 8GB+ for heavier runs |
+| Python | **3.11.x** for local backend (see above) |
+| Node | 18+ for `npm run dev` / `npm run build` |
+| Go | 1.21+ only to **build** the gateway (`gateway/bin/`) or use `./start.sh` / `start.bat` |
+| Docker | Optional: full stack without local Node/Go (see below) |
 
 ## 1. Get the code
 
@@ -22,68 +30,113 @@ git clone https://github.com/go-mirofish/go-mirofish.git
 cd go-mirofish
 ```
 
-## 2. Configure environment variables
+## 2. Configure `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`. At minimum set:
-
-- **`LLM_API_KEY`** — key for your OpenAI-compatible LLM endpoint  
-- **`ZEP_API_KEY`** — key for [Zep Cloud](https://www.getzep.com/) graph memory  
-
-Optional keys in `.env.example` (for example **`LLM_BOOST_*`**) are **acceleration** slots. If you do not use them, **omit those lines** entirely so the backend does not try to read empty boost config.
+Set at least **`LLM_API_KEY`** and **`ZEP_API_KEY`**. Optional **`LLM_BOOST_*`** lines: if you do not use them, **leave them out** of `.env` so the backend does not read empty boost config.
 
 ## 3. Run with Docker Compose
 
-From the repo root (same folder as `docker-compose.yml`):
+From the repo root:
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
-- Frontend: [http://localhost:3000](http://localhost:3000)  
-- Backend API: [http://localhost:5001](http://localhost:5001)  
-
-Compose reads `.env` from the project root. Adjust ports in `docker-compose.yml` only if they clash with other services.
+- UI / gateway: [http://localhost:3000](http://localhost:3000)  
+- Backend (in Compose): `http://backend:5001`  
+Compose reads `.env` at the project root.
 
 ## 4. Run from source (development)
 
-Install dependencies once:
+**Install once (Node, frontend, backend):**
 
 ```bash
 npm run setup:all
 ```
 
-Start backend + frontend together:
+**Run backend + frontend:**
 
 ```bash
 npm run dev
 ```
 
-**URLs** are the same as in the Docker section.
+- Backend: [http://localhost:5001](http://localhost:5001) (`npm run backend`)  
+- Frontend (Vite): [http://localhost:3000](http://localhost:3000) (`npm run frontend`)  
 
-### Run services separately
+`npm run backend` uses `scripts/dev/run-backend.cjs`: it prefers **`backend/.venv`**, else **`uv run`** if `uv` is on your `PATH`. You usually do **not** need to `activate` the venv for day-to-day work.
+
+### Python, uv, and venv
+
+| Task | Command |
+| --- | --- |
+| Create or refresh backend deps (from **repo root**) | `npm run setup:backend` runs `uv sync` in `backend/` if `uv` exists, otherwise **pip** into `backend/.venv` (see `scripts/dev/setup-backend.cjs`) |
+| With **uv** only | `cd backend && uv sync` (if needed: `uv python install 3.11`) |
+| Run the API | `npm run backend` or `cd backend && uv run python run.py` |
+| **Activate** the venv (only for a manual shell) | See table below. Paths are always `backend/.venv` |
+
+| Shell | Activate |
+| --- | --- |
+| macOS / Linux (bash, zsh) | `source backend/.venv/bin/activate` |
+| Windows (Git Bash) | `source backend/.venv/Scripts/activate` |
+| Windows (cmd) | `backend\.venv\Scripts\activate.bat` |
+| Windows (PowerShell) | `backend\.venv\Scripts\Activate.ps1` |
+
+After activation, from **`backend/`**: e.g. `python -m pytest`, `python run.py`.
+
+> [!NOTE]
+> **Git hooks (Husky)** use the same rule as the CLI: `uv` on `PATH` first, else `backend/.venv`. Hooks add `$HOME/.local/bin` and `$HOME/.cargo/bin` to `PATH`. If a hook says the env is missing, run `npm run setup:backend` from the repo root, then `npm install` (for Husky) if you have not already.
+
+## 5. Local gateway + backend (`./start.sh` / `start.bat`)
+
+No Node dev server: build the **Go** gateway, build the **frontend** for `frontend/dist/`, then start.
 
 ```bash
-npm run backend
+npm run build:gateway
+npm run build
 ```
+
+**Linux / macOS:** `./start.sh`  
+**Windows:** `.\start.bat`
+
+Expects: Python **3.11.x**, binary at `gateway/bin/go-mirofish-gateway` (or `gateway\bin\go-mirofish-gateway.exe`), and `frontend/dist/index.html`. Build the gateway manually if you prefer:
+
+The Go module lives under **`gateway/`** (not the repo root). From the **repo root**:
 
 ```bash
-npm run frontend
+mkdir -p gateway/bin
+go -C gateway build -o bin/go-mirofish-gateway ./cmd/mirofish-gateway
 ```
 
-## 5. Planned one-command startup (`./start.sh`)
+**Windows (PowerShell),** from the repo root:
 
-The go-mirofish roadmap includes a **single shell entrypoint** that starts the **Go gateway** and **Python** stack using a **prebuilt Go binary** (no local Go toolchain, no Node for the supported production-style path). That script is **not guaranteed to exist yet** in every checkout; until it appears in the repo root, treat **Docker** or **`npm run dev`** as the supported paths above.
+```powershell
+New-Item -ItemType Directory -Force -Path gateway/bin | Out-Null
+go -C gateway build -o bin/go-mirofish-gateway.exe ./cmd/mirofish-gateway
+```
+
+Or run **`npm run build:gateway`** (writes to `gateway/bin/`).
+
+## Troubleshooting
+
+| Symptom | What to do |
+| --- | --- |
+| `camel-oasis` / “no matching distribution” | You are on **Python 3.12+**. Install **3.11.x**, remove `backend/.venv`, run `npm run setup:backend`. |
+| `uv` is not recognized | **Optional:** use `npm run setup:backend` (see [Python, uv, and venv](#python-uv-and-venv)). |
+| `vite` is not recognized | Run `npm run setup` or `npm install` at root and `npm install --prefix frontend` so `frontend/node_modules` exists. |
+| Prebuilt gateway missing | `npm run build:gateway` or `go build` as above; ensure `frontend/dist` exists (`npm run build`). |
+| Wrong venv path | Only **`backend/.venv`**. See [Python, uv, and venv](#python-uv-and-venv). |
 
 ## Verify
 
-1. Open the UI at [http://localhost:3000](http://localhost:3000).  
-2. Confirm the API responds, for example by loading the app’s graph or health views (exact checks depend on the release you are on).  
+1. Open [http://localhost:3000](http://localhost:3000) (dev or gateway path).  
+2. Check health: [http://localhost:5001/health](http://localhost:5001/health) (dev backend) or [http://localhost:3000/health](http://localhost:3000/health) (through the gateway when using `start.sh`).
 
 ## Next steps
 
-- [Ollama setup (local LLM)](../configuration/ollama.md)  
-- Full **.env** reference and cloud LLM providers (coming on go.mirofish.ai under **Configuration**)
+- [Ollama (local LLM)](../configuration/ollama.md)  
+- [OpenAI-compatible providers](../configuration/providers.md)  
+- Deeper **.env** reference on [go.mirofish.ai](https://go.mirofish.ai) as docs expand  

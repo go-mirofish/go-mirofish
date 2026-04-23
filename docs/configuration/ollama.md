@@ -29,21 +29,19 @@ cp .env.example .env
 Set **LLM** variables to match Ollama’s OpenAI-compatible endpoint. Typical local settings:
 
 ```env
-LLM_API_KEY=ollama
 LLM_BASE_URL=http://127.0.0.1:11434/v1
 LLM_MODEL_NAME=llama3.1
 ```
 
-- **`LLM_API_KEY`** — Ollama does not require a real secret for local use; a placeholder like `ollama` is fine if the server accepts requests without auth.  
-- **`LLM_BASE_URL`** — must be the **`/v1`** compatible base (see Ollama docs for your version).  
-- **`LLM_MODEL_NAME`** — must match a model you **`ollama pull`**’d.
+- **`LLM_API_KEY`:** optional for local Ollama if the server accepts unauthenticated requests.  
+- **`LLM_BASE_URL`:** must be the **`/v1`** compatible base (see Ollama docs for your version).  
+- **`LLM_MODEL_NAME`:** must match a model you **`ollama pull`**'d.
 
 Leave **`ZEP_API_KEY`** set to a real Zep Cloud key unless you are using a different memory stack.
 
 ## Copy-paste block (local machine)
 
 ```env
-LLM_API_KEY=ollama
 LLM_BASE_URL=http://127.0.0.1:11434/v1
 LLM_MODEL_NAME=llama3.1
 
@@ -54,7 +52,7 @@ Then start the app using [Installation](../getting-started/installation.md) (Doc
 
 ## JSON mode and model caveats
 
-Parts of the MiroFish / go-mirofish stack rely on **structured JSON** from the model in some code paths. Not every local model enforces JSON output reliably.
+Parts of the go-mirofish stack rely on **structured JSON** from the model in some code paths. Not every local model enforces JSON output reliably.
 
 > [!WARNING]
 > If simulations or graph steps fail with parse errors, try a model known for strong instruction-following / JSON mode, reduce scenario complexity, or switch to a hosted model that supports JSON-style responses consistently.
@@ -67,4 +65,5 @@ Parts of the MiroFish / go-mirofish stack rely on **structured JSON** from the m
 ## See also
 
 - [Installation](../getting-started/installation.md)  
+- [OpenAI-compatible providers](./providers.md)  
 - Cloud LLM and full `.env` reference (expanding on go.mirofish.ai under **Configuration**)

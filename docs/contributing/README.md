@@ -2,14 +2,14 @@
 
 Hub for contributor docs. The repo root **[CONTRIBUTING.md](../../CONTRIBUTING.md)** is the short entry point GitHub highlights for new contributors.
 
-- **[6-layer PR planning (narrative)](github-pr-6-layer.md)** — full guide (pairs with **PR template**); **PR template**: [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md); **issue templates** (chooser): [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/).
-- **[Commit messages (Conventional Commits)](commit-messages.md)** — types, scopes, examples, and what each Husky hook runs.
+- **issue templates** (chooser): [`.github/ISSUE_TEMPLATE/`](../../.github/ISSUE_TEMPLATE/).
+- **[Commit messages (Conventional Commits)](commit-messages.md):** types, scopes, examples, and what each Husky hook runs.
 
 ## Dev tooling (root)
 
 | Tool | Role |
 | --- | --- |
-| **Husky** (`.husky/`) | `commit-msg` → Commitlint; `pre-commit` → optional `go vet`, Python `py_compile` (uses `uv` or `backend/.venv`); `pre-push` → `go test` (if `gateway/`), `pytest` via `uv` or `.venv`. Hooks prepend `$HOME/.local/bin` and `$HOME/.cargo/bin` because Git often runs hooks with a minimal `PATH` (e.g. `uv: command not found`). |
+| **Husky** (`.husky/`) | `commit-msg` → Commitlint; `pre-commit` → optional `go vet`, Python `py_compile`; `pre-push` → `go test` (if `gateway/`), `pytest`. Python: **`uv` first, else `backend/.venv`**, per [Installation](../getting-started/installation.md#python-uv-and-venv). Missing env → **`npm run setup:backend`**. Hooks prepend `$HOME/.local/bin` and `$HOME/.cargo/bin` for a minimal hook `PATH`. |
 | **Commitlint** (`commitlint.config.cjs`) | Conventional commits: required **type** + **scope**, subject max **72** chars. Types include `build` and `revert`. Scopes: `gateway`, `python`, `frontend`, `docs`, `readme`, `ci`, `config`, `deps`, `release`. Details: [commit-messages.md](commit-messages.md). |
 | **Changesets** (`.changeset/config.json`) | Version PRs / changelog; run `npx changeset` after user-facing changes. Release workflow: `.github/workflows/release.yml`. |
 | **Renovate** (`renovate.json`) | Weekly deps; **pinned AI packages** (`camel-oasis`, `camel-ai`, `zep-cloud`) are excluded from auto-updates. |

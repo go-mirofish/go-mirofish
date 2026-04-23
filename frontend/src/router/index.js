@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
+import DocsView from '../views/DocsView.vue'
 import Process from '../views/MainView.vue'
 import SimulationView from '../views/SimulationView.vue'
 import SimulationRunView from '../views/SimulationRunView.vue'
@@ -11,6 +12,22 @@ const routes = [
     path: '/',
     name: 'Home',
     component: Home
+  },
+  {
+    path: '/docs',
+    name: 'Docs',
+    component: DocsView
+  },
+  {
+    path: '/docs/:section',
+    name: 'DocsSection',
+    component: DocsView,
+    beforeEnter: (to) => {
+      const valid = ['installation', 'ollama', 'providers', 'contributing']
+      if (!valid.includes(to.params.section)) {
+        return { name: 'Docs' }
+      }
+    }
   },
   {
     path: '/process/:projectId',

@@ -2,22 +2,22 @@
 
 <img src="./static/image/go-mirofish-thumbnail.png" alt="go-mirofish logo" width="55%"/>
 
-**MiroFish, lightweight and local-first**
+**go-mirofish, lightweight and local-first**
 
 [![GitHub Stars](https://img.shields.io/github/stars/go-mirofish/go-mirofish?style=flat-square&color=DAA520)](https://github.com/go-mirofish/go-mirofish/stargazers)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg?style=flat-square)](./LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-blue.svg?style=flat-square)](https://go.dev/)
-[![Python Version](https://img.shields.io/badge/Python-3.11+-blue.svg?style=flat-square)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11.x-blue.svg?style=flat-square)](https://www.python.org/)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/justinedevs?style=flat-square&logo=github&label=Sponsor)](https://github.com/sponsors/go-mirofish)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/justinedevs)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](http://discord.gg/ePf5aPaHnA)
 [![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/mirofish_ai)
 
-[English](./README.md) | [中文文档](./README-ZH.md)
-
 </div>
 
-Upload documents, describe what you want to predict, and get a full simulation report—**on your laptop**.
+Upload documents, describe what you want to predict, and get a full simulation report **on your laptop**.
+
+**Production site:** [go.mirofish.ai](https://go.mirofish.ai)
 
 > [!NOTE]
 > **go-mirofish** is a lightweight fork of [MiroFish](https://github.com/666ghj/MiroFish). The AI features and five-step workflow are the same; **only the web and runtime layer** is optimized for local-first, lower-overhead deployment.
@@ -59,7 +59,7 @@ Upload documents, describe what you want to predict, and get a full simulation r
    docker compose up -d
    ```
 
-   **Or** from source (Node18+, Python 3.11+, [uv](https://docs.astral.sh/uv/) recommended):
+   **Or** from source (Node 18+ and **Python 3.11.x**; [uv](https://docs.astral.sh/uv/) is optional; see [Installation](docs/getting-started/installation.md#python-uv-and-venv)):
 
    ```bash
    npm run setup:all && npm run dev
@@ -69,37 +69,34 @@ Upload documents, describe what you want to predict, and get a full simulation r
    - API: [http://localhost:5001](http://localhost:5001)
 
 > [!IMPORTANT]
-> You need **`LLM_API_KEY`** and **`ZEP_API_KEY`** for the default cloud path. For **local LLMs** (no cloud key for the model), see [Ollama setup](docs/configuration/ollama.md).
+> You need **`LLM_API_KEY`** and **`ZEP_API_KEY`** for the default cloud path. For **local LLMs** or other OpenAI-compatible providers, see [Ollama setup](docs/configuration/ollama.md) and [OpenAI-compatible providers](docs/configuration/providers.md).
 
 > [!NOTE]
-> A single **`./start.sh`** entrypoint (prebuilt Go gateway + Python, no Node for daily use) is **planned** for this fork. Until it lands in-repo, use **Docker** or **`npm run dev`** as shown—details in [Installation](docs/getting-started/installation.md).
+> This fork now includes additive hybrid entrypoints:
+> - **`compose.yaml`** for the gateway + backend container topology
+> - **`./start.sh`** / **`start.bat`** for the local prebuilt-gateway path
+>
+> Build the gateway binary into **`gateway/bin/`** first, then use the hybrid path described in [Installation](docs/getting-started/installation.md).
 
 ## How it works (5 steps)
 
-1. **Graph building** — upload seed documents; build the knowledge graph  
-2. **Environment setup** — extract entities, personas, and agent configuration  
-3. **Simulation** — run the multi-agent social simulation  
-4. **Report generation** — produce an analysis report from the simulated world  
-5. **Deep interaction** — chat with agents and the report assistant  
+1. **Graph building:** upload seed documents; build the knowledge graph  
+2. **Environment setup:** extract entities, personas, and agent configuration  
+3. **Simulation:** run the multi-agent social simulation  
+4. **Report generation:** produce an analysis report from the simulated world  
+5. **Deep interaction:** chat with agents and the report assistant  
 
-## Screenshots
+## Showcase Proof
 
-<div align="center">
-<table>
-<tr>
-<td><img src="./static/image/Screenshot/运行截图1.png" alt="Screenshot 1" width="100%"/></td>
-<td><img src="./static/image/Screenshot/运行截图2.png" alt="Screenshot 2" width="100%"/></td>
-</tr>
-<tr>
-<td><img src="./static/image/Screenshot/运行截图3.png" alt="Screenshot 3" width="100%"/></td>
-<td><img src="./static/image/Screenshot/运行截图4.png" alt="Screenshot 4" width="100%"/></td>
-</tr>
-<tr>
-<td><img src="./static/image/Screenshot/运行截图5.png" alt="Screenshot 5" width="100%"/></td>
-<td><img src="./static/image/Screenshot/运行截图6.png" alt="Screenshot 6" width="100%"/></td>
-</tr>
-</table>
-</div>
+For first-party `go-mirofish` proof artifacts, see [docs/hybrid/showcase.md](./docs/hybrid/showcase.md).
+
+That page tracks:
+
+- benchmark fixture and harness
+- contract verification
+- gateway tests
+- hybrid startup verification
+- the current status of first-party screenshots and demo capture
 
 ## Hardware compatibility
 
@@ -107,8 +104,8 @@ Upload documents, describe what you want to predict, and get a full simulation r
 | --- | ---: | --- |
 | Desktop / laptop | 8GB | Yes |
 | Desktop / laptop | 4GB | Yes (smaller simulations) |
-| Raspberry Pi 5 | 4GB | Yes (light workloads; validate locally) |
-| Raspberry Pi 4 | 4GB | Limited (expect tight headroom) |
+| Raspberry Pi 5 | 4GB | ARM64-ready; pending on-device validation |
+| Raspberry Pi 4 | 4GB | ARM64-ready; likely tight headroom, pending on-device validation |
 
 > [!WARNING]
 > Large graphs, long simulations, or heavy models can exceed **4GB** systems. Start with short runs and smaller seeds.
@@ -123,4 +120,4 @@ Issues and PRs are welcome. Use this repo for **go-mirofish** changes; upstream 
 
 ## Acknowledgments
 
-Derived from **[MiroFish](https://github.com/666ghj/MiroFish)**. Simulation is powered by **[OASIS](https://github.com/camel-ai/oasis)**—thanks to the CAMEL-AI team.
+Derived from **[MiroFish](https://github.com/666ghj/MiroFish)**. Simulation is powered by **[OASIS](https://github.com/camel-ai/oasis)**. Thanks to the CAMEL-AI team.

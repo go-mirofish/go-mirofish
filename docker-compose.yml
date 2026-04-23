@@ -1,14 +1,29 @@
 services:
-  mirofish:
-    image: ghcr.io/666ghj/mirofish:latest
-    # 加速镜像（如拉取缓慢可替换上方地址）
-    # image: ghcr.nju.edu.cn/666ghj/mirofish:latest
-    container_name: mirofish
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
     env_file:
       - .env
-    ports:
-      - "3000:3000"
-      - "5001:5001"
     restart: unless-stopped
+    expose:
+      - "5001"
     volumes:
       - ./backend/uploads:/app/backend/uploads
+
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    env_file:
+      - .env
+    environment:
+      BACKEND_URL: http://backend:5001
+      GATEWAY_BIND_HOST: 0.0.0.0
+      GATEWAY_PORT: 3000
+      FRONTEND_DIST_DIR: /app/frontend-dist
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    restart: unless-stopped

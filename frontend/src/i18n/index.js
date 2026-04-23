@@ -14,12 +14,16 @@ for (const path in localeFiles) {
   }
 }
 
-const savedLocale = localStorage.getItem('locale') || 'zh'
+const saved = localStorage.getItem('locale') || 'en'
+const savedLocale = Object.prototype.hasOwnProperty.call(messages, saved) ? saved : 'en'
+if (saved !== savedLocale) {
+  localStorage.setItem('locale', savedLocale)
+}
 
 const i18n = createI18n({
   legacy: false,
   locale: savedLocale,
-  fallbackLocale: 'zh',
+  fallbackLocale: 'en',
   messages
 })
 

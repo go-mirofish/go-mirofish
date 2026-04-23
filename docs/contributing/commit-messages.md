@@ -90,9 +90,9 @@ feat(infra): add feature
 
 | Hook | What it does |
 | --- | --- |
-| **`commit-msg`** | **Commitlint** — validates type, scope, subject length, and conventional format. |
-| **`pre-commit`** | If `gateway/` exists: `go vet ./...`. For staged `*.py` files: `python -m py_compile` via `uv` from `backend/`. |
-| **`pre-push`** | If `gateway/` exists: `go test ./...`. In `backend/`: `uv run pytest` (exit code5 = no tests collected is treated as skip). |
+| **`commit-msg`** | **Commitlint** validates type, scope, subject length, and conventional format. |
+| **`pre-commit`** | If `gateway/` exists: `go vet ./...`. For staged `*.py` files, from `backend/`: `uv run python -m py_compile …` if `uv` is on `PATH`, else the `backend/.venv` interpreter. Same as [Installation → Python, uv, and venv](../getting-started/installation.md#python-uv-and-venv). |
+| **`pre-push`** | If `gateway/` exists: `go test ./...`. In `backend/`: `uv run pytest` if `uv` is on `PATH`, else `backend/.venv` + `python -m pytest` (exit code 5 = no tests collected is treated as skip). If neither exists, the hook prints the standard `npm run setup:backend` fix and may skip. |
 
 So: **message format** is only enforced on **`commit-msg`**. **`pre-commit`** does **not** run `go test` or `pytest`; those run on **`pre-push`**.
 
@@ -108,4 +108,4 @@ In VS Code, the **Conventional Commits** extension gives a guided commit builder
 
 ## See also
 
-- [Contributing index](README.md) — Husky, Changesets, Renovate overview.
+- [Contributing index](README.md): Husky, Changesets, Renovate overview.

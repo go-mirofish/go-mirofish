@@ -8,6 +8,12 @@ cd "$ROOT" || exit 1
 if [ -n "$HOME" ]; then
   export PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin"
 fi
+if [ -z "$GOCACHE" ]; then
+  export GOCACHE="${TMPDIR:-/tmp}/go-build-cache"
+fi
+if [ -z "$UV_CACHE_DIR" ]; then
+  export UV_CACHE_DIR="${TMPDIR:-/tmp}/uv-cache"
+fi
 
 # Go tests (only if gateway/ exists)
 if [ -d "gateway" ]; then
@@ -27,9 +33,10 @@ echo "Running Python tests..."
   elif [ -f ".venv/Scripts/python.exe" ]; then
     .venv/Scripts/python.exe -m pytest --tb=short -q
   else
-    echo "pre-push: uv not in PATH and backend/.venv not found — skipping pytest."
-    echo "  Fix: install https://docs.astral.sh/uv/ and run: cd backend && uv sync"
-    echo "  Or run tests in CI before merging."
+    echo "pre-push: uv not in PATH and backend/.venv not found; skipping pytest."
+    echo "  Fix: npm run setup:backend  (from repo root)"
+    echo "  Or:  cd backend && uv sync  (if uv is installed)"
+    echo "  You can also rely on CI before merging."
     exit 0
   fi
   status=$?

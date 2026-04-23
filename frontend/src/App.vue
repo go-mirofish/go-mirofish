@@ -3,11 +3,9 @@
 </template>
 
 <script setup>
-// 使用 Vue Router 来管理页面
 </script>
 
 <style>
-/* 全局样式重置 */
 * {
   margin: 0;
   padding: 0;
@@ -15,32 +13,37 @@
 }
 
 #app {
-  font-family: 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace;
+  font-family: var(--doc-font-sans, 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #000000;
-  background-color: #ffffff;
+  color: var(--doc-text, #111827);
+  background-color: var(--doc-bg, #f4f4f5);
 }
 
-/* 滚动条样式 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--doc-bg, #f1f1f1);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #000000;
+  background: var(--doc-muted, #6b7280);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #333333;
+  background: var(--doc-text, #374151);
 }
 
-/* 全局按钮样式 */
+html[data-theme='dark'] ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 button {
   font-family: inherit;
 }

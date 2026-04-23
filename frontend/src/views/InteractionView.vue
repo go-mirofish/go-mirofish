@@ -3,7 +3,7 @@
     <!-- Header -->
     <header class="app-header">
       <div class="header-left">
-        <div class="brand" @click="router.push('/')">MIROFISH</div>
+        <div class="brand" @click="router.push('/')">go-mirofish</div>
       </div>
       
       <div class="header-center">
@@ -49,7 +49,6 @@
         />
       </div>
 
-      <!-- Right Panel: Step5 深度互动 -->
       <div class="panel-wrapper right" :style="rightPanelStyle">
         <Step5Interaction
           :reportId="currentReportId"
@@ -83,7 +82,6 @@ const props = defineProps({
   reportId: String
 })
 
-// Layout State - 默认切换到工作台视角
 const viewMode = ref('workbench')
 
 // Data State
@@ -147,26 +145,22 @@ const loadReportData = async () => {
   try {
     addLog(t('log.loadReportData', { id: currentReportId.value }))
 
-    // 获取 report 信息以获取 simulation_id
     const reportRes = await getReport(currentReportId.value)
     if (reportRes.success && reportRes.data) {
       const reportData = reportRes.data
       simulationId.value = reportData.simulation_id
 
       if (simulationId.value) {
-        // 获取 simulation 信息
         const simRes = await getSimulation(simulationId.value)
         if (simRes.success && simRes.data) {
           const simData = simRes.data
 
-          // 获取 project 信息
           if (simData.project_id) {
             const projRes = await getProject(simData.project_id)
             if (projRes.success && projRes.data) {
               projectData.value = projRes.data
               addLog(t('log.projectLoadSuccess', { id: projRes.data.project_id }))
 
-              // 获取 graph 数据
               if (projRes.data.graph_id) {
                 await loadGraph(projRes.data.graph_id)
               }

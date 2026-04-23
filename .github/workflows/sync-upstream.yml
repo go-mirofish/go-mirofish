@@ -1,0 +1,51 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote remove upstream || true
+          git remote add upstream https://github.com/666ghj/MiroFish.git
+          git fetch upstream main
+
+      - name: Merge upstream/main into sync branch
+        run: |
+          git checkout -B chore/sync-upstream upstream/main
+          git checkout main -- .
+          git merge --no-edit upstream/main || true
+
+      - name: Create pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: chore/sync-upstream
+          title: "chore: sync upstream/main"
+          commit-message: "chore: sync upstream/main"
+          body: |
+            Sync upstream `main` into the fork.
+
+            Post-merge checks should rerun:
+            - gateway build and tests
+            - contract matrix verification
+            - benchmark/parity verification where environment permits

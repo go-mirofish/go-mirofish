@@ -1,5 +1,5 @@
 <template>
-  <div class="language-switcher" ref="switcherRef">
+  <div v-if="availableLocales.length > 1" class="language-switcher" ref="switcherRef">
     <button class="switcher-trigger" @click="toggleDropdown">
       {{ currentLabel }}
       <span class="caret">{{ open ? '▲' : '▼' }}</span>
@@ -66,23 +66,22 @@ onUnmounted(() => {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* Light theme (default - for white header backgrounds) */
 .switcher-trigger {
   background: transparent;
-  color: #333;
-  border: 1px solid #CCC;
+  color: var(--doc-text, #111827);
+  border: 1px solid var(--doc-border, #d1d5db);
   padding: 4px 12px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--doc-font-mono, 'JetBrains Mono', monospace);
   font-size: 0.8rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: border-color 0.2s, opacity 0.2s;
+  transition: border-color 0.2s, opacity 0.2s, color 0.2s;
 }
 
 .switcher-trigger:hover {
-  border-color: #999;
+  border-color: var(--doc-muted, #6b7280);
 }
 
 .caret {
@@ -94,30 +93,33 @@ onUnmounted(() => {
   top: 100%;
   right: 0;
   margin-top: 4px;
-  background: #FFFFFF;
-  border: 1px solid #DDD;
+  background: var(--doc-surface, #fff);
+  border: 1px solid var(--doc-border, #e5e7eb);
   list-style: none;
   padding: 4px 0;
   min-width: 100%;
   z-index: 1000;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+}
+html[data-theme='dark'] .switcher-dropdown {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.4);
 }
 
 .switcher-option {
   padding: 6px 12px;
   font-size: 0.8rem;
-  color: #333;
+  color: var(--doc-text, #111827);
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s;
 }
 
 .switcher-option:hover {
-  background: #F0F0F0;
+  background: var(--doc-bg, #f3f4f5);
 }
 
 .switcher-option.active {
-  color: var(--orange, #FF4500);
+  color: var(--orange, #00add8);
 }
 
 
