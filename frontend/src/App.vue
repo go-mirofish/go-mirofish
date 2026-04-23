@@ -38,10 +38,10 @@
 }
 
 html[data-theme='dark'] ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--doc-console-scroll, #4b5563);
 }
 html[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--doc-muted, #9ca3af);
 }
 
 button {
