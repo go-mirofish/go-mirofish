@@ -23,6 +23,7 @@ Use these as **examples**. Model names and URLs change when vendors update their
 | Local | **Ollama** | `http://127.0.0.1:11434/v1` | `llama3.1` |
 | Local | **llama.cpp** (OpenAI-compatible server) | `http://127.0.0.1:8080/v1` | your model alias |
 | Hosted | **OpenAI** | `https://api.openai.com/v1` | `gpt-4o-mini` |
+| Hosted | **Google Gemini (OpenAI compatibility)** | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-2.5-flash` |
 | Hosted | **xAI / Grok** | `https://api.x.ai/v1` | `grok-2-latest` |
 | Hosted | **Groq** | `https://api.groq.com/openai/v1` | `llama-3.1-70b-versatile` |
 | Hosted | **Qwen (DashScope compatible mode)** | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` |
@@ -65,6 +66,14 @@ LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL_NAME=gpt-4o-mini
 ```
 
+### Hosted: Google Gemini (OpenAI-compatible endpoint)
+
+```env
+LLM_API_KEY=<your Gemini API key>
+LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+LLM_MODEL_NAME=gemini-2.5-flash
+```
+
 ### Hosted: xAI / Grok
 
 ```env
@@ -90,7 +99,7 @@ LLM_MODEL_NAME=qwen-plus
 ```
 
 > [!WARNING]
-> **Gemini and Anthropic:** this repo does **not** include native Google Gemini or Anthropic SDK wiring. To use those model families, put an **OpenAI-compatible bridge or proxy** in front, then set `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL_NAME` to whatever that gateway expects:
+> **Anthropic:** this repo does **not** include a native Anthropic SDK path. To use Anthropic models, put an **OpenAI-compatible bridge or proxy** in front, then set `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL_NAME` to whatever that gateway expects:
 
 ```env
 LLM_API_KEY=<bridge key>
@@ -99,7 +108,7 @@ LLM_MODEL_NAME=<bridge model name>
 ```
 
 > [!NOTE]
-> **Why one interface:** a single “OpenAI-compatible” path keeps the codebase small and still lets you swap OpenAI, Grok, Groq, Qwen, local servers, and gateway-backed Gemini/Anthropic by configuration alone.
+> **Why one interface:** a single “OpenAI-compatible” path keeps the codebase small and still lets you swap OpenAI, Gemini, Grok, Groq, Qwen, local servers, and gateway-backed Anthropic by configuration alone.
 
 ## See also
 
