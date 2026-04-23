@@ -928,7 +928,7 @@ async def run_twitter_simulation(
         original_rounds = total_rounds
         total_rounds = min(total_rounds, max_rounds)
         if total_rounds < original_rounds:
-            logger.info(f"Truncated simulation rounds from {original_rounds} to {total_rounds}")
+            log_info(f"Truncated simulation rounds from {original_rounds} to {total_rounds}")
     
     start_time = datetime.now()
     
@@ -1096,7 +1096,7 @@ async def run_reddit_simulation(
         original_rounds = total_rounds
         total_rounds = min(total_rounds, max_rounds)
         if total_rounds < original_rounds:
-            logger.info(f"Truncated simulation rounds from {original_rounds} to {total_rounds}")
+            log_info(f"Truncated simulation rounds from {original_rounds} to {total_rounds}")
     
     start_time = datetime.now()
     
@@ -1160,28 +1160,34 @@ async def run_reddit_simulation(
 
 
 async def main():
+    parser = argparse.ArgumentParser(description='OASIS parallel simulation')
     parser.add_argument(
         '--config', 
         type=str, 
         required=True,
+        help='Path to the simulation configuration file (simulation_config.json)'
     )
     parser.add_argument(
         '--twitter-only',
         action='store_true',
+        help='Run only the Twitter simulation lane'
     )
     parser.add_argument(
         '--reddit-only',
         action='store_true',
+        help='Run only the Reddit simulation lane'
     )
     parser.add_argument(
         '--max-rounds',
         type=int,
         default=None,
+        help='Optional maximum number of rounds, used to truncate long simulations'
     )
     parser.add_argument(
         '--no-wait',
         action='store_true',
         default=False,
+        help='Close the environments immediately after the simulation instead of entering wait-for-commands mode'
     )
     
     args = parser.parse_args()
