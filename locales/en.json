@@ -41,7 +41,8 @@
   },
   "footer": {
     "maintainedBy": "Maintained by {link}",
-    "authorName": "JustineDevs"
+    "authorName": "JustineDevs",
+    "buyMeACoffeeAlt": "Buy me a coffee"
   },
   "docs": {
     "topbarMeta": "Documentation",
@@ -135,7 +136,9 @@
     "docSectionWorkflow": "Five-step workflow",
     "docSectionPlayground": "Interactive playground",
     "docPlaygroundLead": "Upload reality seeds and a natural-language prompt. This uses the same live validation path as the full workbench (graph build → simulation → report).",
-    "docSectionHistory": "Recent simulations"
+    "docSectionHistory": "Recent simulations",
+    "zeroCostNoteLead": "Why this is zero-cost:",
+    "zeroCostNoteDesc": "this replay ships as static JSON, so visitors can inspect a real captured run without using your live inference budget."
   },
   "main": {
     "layoutGraph": "Graph",
@@ -271,7 +274,16 @@
     "forceStopSuccess": "Simulation force stopped",
     "forceStopFailed": "Force stop failed: {error}",
     "startGenerateReportBtn": "Generate Report",
-    "generatingReportBtn": "Starting..."
+    "generatingReportBtn": "Starting...",
+    "stopAndSave": "Stop & save",
+    "savingCheckpoint": "Saving…",
+    "checkpointSaved": "Progress saved at checkpoint (combined round {round} · Info Plaza {plazaR} · Topic Community {communityR}).",
+    "removeSimulation": "Remove",
+    "removingSimulation": "Removing…",
+    "removeSimulationInProgress": "Requesting server to remove this simulation and its data…",
+    "removeSimulationConfirm": "Delete this simulation and all of its data on the server? This cannot be undone.",
+    "removeSimulationSuccess": "Simulation removed and local data deleted.",
+    "removeSimulationFailed": "Remove failed: {error}"
   },
   "step4": {
     "generatingSection": "Generating {title}...",
@@ -365,6 +377,19 @@
   },
   "history": {
     "title": "Simulation History",
+    "sectionTitle": "Recent simulations",
+    "panelTitle": "Simulation history",
+    "edit": "Edit",
+    "done": "Done",
+    "selectAll": "Select all",
+    "selectedCount": "{count} selected",
+    "delete": "Delete",
+    "deleteSelected": "Delete selected",
+    "deleting": "Deleting…",
+    "deleteConfirmSingle": "Delete this simulation and all of its data? This cannot be undone.",
+    "deleteConfirmBulk": "Delete {count} simulations and all their data? This cannot be undone.",
+    "deleteFailed": "Delete failed: {error}",
+    "deletePartialFailed": "{count} deletions failed. The rest were removed.",
     "graphBuild": "Graph Build",
     "envSetup": "Env Setup",
     "analysisReport": "Analysis Report",
@@ -408,6 +433,7 @@
     "graphNotBuilt": "Graph not yet built. Please call /api/graph/build first.",
     "requireSimulationId": "Please provide simulation_id",
     "simulationNotFound": "Simulation not found: {id}",
+    "simulationDeleteFailed": "Could not remove simulation data for {id}",
     "projectMissingRequirement": "Project missing simulation requirement (simulation_requirement)",
     "prepareStarted": "Preparation task started. Query progress via /api/simulation/prepare/status.",
     "alreadyPrepared": "Preparation already complete. No need to regenerate.",
