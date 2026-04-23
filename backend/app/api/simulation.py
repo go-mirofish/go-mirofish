@@ -1468,6 +1468,44 @@ def stop_simulation():
         }), 500
 
 
+@simulation_bp.route('/delete', methods=['POST'])
+def delete_simulation():
+    try:
+        data = request.get_json() or {}
+        simulation_id = data.get('simulation_id')
+        if not simulation_id:
+            return jsonify({
+                "success": False,
+                "error": t('api.requireSimulationId')
+            }), 400
+
+        result = SimulationRunner.purge_simulation(simulation_id)
+        if not result.get("success"):
+            return jsonify({
+                "success": False,
+                "error": t('api.simulationDeleteFailed', id=simulation_id),
+                "data": result
+            }), 500
+
+        manager = SimulationManager()
+        manager.remove_simulation(simulation_id)
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "simulation_id": simulation_id,
+                "warnings": result.get("warnings", [])
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to delete simulation: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }), 500
+
 
 @simulation_bp.route('/<simulation_id>/run-status', methods=['GET'])
 def get_run_status(simulation_id: str):
