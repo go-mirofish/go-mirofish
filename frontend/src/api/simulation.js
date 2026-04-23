@@ -80,6 +80,13 @@ export const stopSimulation = (data) => {
 }
 
 /**
+ * @param {Object} data - { simulation_id }
+ */
+export const deleteSimulation = (data) => {
+  return service.post('/api/simulation/delete', data)
+}
+
+/**
  * @param {string} simulationId
  */
 export const getRunStatus = (simulationId) => {
