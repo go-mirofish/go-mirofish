@@ -467,15 +467,11 @@ html[data-theme='dark'] .ontology-detail-overlay {
 .detail-type-badge {
     font-size: 9px;
     font-weight: 700;
-    color: #fff;
-    background: var(--doc-text, #111827);
+    color: var(--doc-tooltip-pill-fg, #fafafa);
+    background: var(--doc-tooltip-surface, #16181f);
     padding: 2px 6px;
     border-radius: 2px;
     text-transform: uppercase;
-}
-html[data-theme='dark'] .detail-type-badge {
-  color: var(--doc-bg, #0b0c0f);
-  background: var(--doc-text, #e4e4e7);
 }
 
 .detail-name {
