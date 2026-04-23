@@ -954,11 +954,12 @@ watch(() => props.simulationId, (newId) => {
   flex: 1;
   display: flex;
   overflow: hidden;
+  min-width: 0;
 }
 
 .left-panel.report-style {
   width: 45%;
-  min-width: 450px;
+  min-width: 0;
   background: var(--doc-surface);
   border-right: 1px solid var(--doc-border);
   overflow-y: auto;
@@ -1281,6 +1282,7 @@ watch(() => props.simulationId, (newId) => {
   flex-direction: column;
   background: var(--doc-surface);
   overflow: hidden;
+  min-width: 0;
 }
 
 /* Action Bar - Professional Design */
@@ -1292,6 +1294,10 @@ watch(() => props.simulationId, (newId) => {
   border-bottom: 1px solid var(--doc-border);
   background: linear-gradient(180deg, var(--doc-surface) 0%, var(--doc-bg) 100%);
   gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  overflow: visible;
 }
 
 .action-bar-header {
@@ -1334,6 +1340,7 @@ watch(() => props.simulationId, (newId) => {
   gap: 6px;
   flex: 1;
   justify-content: flex-end;
+  overflow: visible;
 }
 
 .tab-pill {
@@ -1358,9 +1365,10 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tab-pill.active {
-  background: var(--doc-text);
-  color: #FFFFFF;
-  box-shadow: 0 2px 8px rgba(31, 41, 55, 0.15);
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #FFFFFF);
+  border-color: var(--doc-cta-primary-bg, #111827);
+  box-shadow: 0 2px 10px color-mix(in srgb, #000 20%, transparent);
 }
 
 .tab-pill svg {
@@ -1393,19 +1401,19 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .survey-pill {
-  background: #ECFDF5;
-  color: #047857;
+  background: var(--doc-badge-ok-bg);
+  color: var(--doc-badge-ok-fg);
 }
 
 .survey-pill:hover {
-  background: #D1FAE5;
-  color: #065F46;
+  background: color-mix(in srgb, var(--doc-badge-ok-bg) 70%, var(--doc-surface));
+  color: var(--doc-badge-ok-fg);
 }
 
 .survey-pill.active {
-  background: #047857;
-  color: #FFFFFF;
-  box-shadow: 0 2px 8px rgba(4, 120, 87, 0.2);
+  background: var(--doc-badge-ok-fg);
+  color: color-mix(in srgb, var(--doc-badge-ok-bg) 20%, var(--doc-surface));
+  box-shadow: 0 2px 10px color-mix(in srgb, #000 20%, transparent);
 }
 
 /* Interaction Header */
@@ -1441,9 +1449,9 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .tab-btn.active {
-  background: var(--doc-text);
-  color: #FFFFFF;
-  border-color: var(--doc-text);
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #FFFFFF);
+  border-color: var(--doc-cta-primary-bg, #111827);
 }
 
 .tab-btn svg {
@@ -1770,14 +1778,15 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .target-option.active {
-  background: var(--doc-text);
-  color: #FFFFFF;
-  border-color: var(--doc-text);
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #FFFFFF);
+  border-color: var(--doc-cta-primary-bg, #111827);
 }
 
 /* Agent Dropdown */
 .agent-dropdown {
   position: relative;
+  z-index: 30;
 }
 
 .dropdown-arrow {
@@ -1802,7 +1811,7 @@ watch(() => props.simulationId, (newId) => {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.06);
   max-height: 320px;
   overflow-y: auto;
-  z-index: 100;
+  z-index: 200;
 }
 
 .dropdown-header {
@@ -1935,8 +1944,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-message.user .message-avatar {
-  background: var(--doc-text);
-  color: #FFFFFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #FFFFFF);
 }
 
 .chat-message.assistant .message-avatar {
@@ -1984,8 +1993,8 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .chat-message.user .message-text {
-  background: var(--doc-text);
-  color: #FFFFFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #FFFFFF);
   border-bottom-right-radius: 4px;
 }
 
@@ -2071,6 +2080,26 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   gap: 12px;
   align-items: flex-end;
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  background: color-mix(in srgb, var(--doc-surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+/* Responsive: stack panels on narrow widths (split mode / small window) */
+@media (max-width: 1100px) {
+  .main-split-layout {
+    flex-direction: column;
+  }
+
+  .left-panel.report-style {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--doc-border);
+    padding: 22px 22px 28px 22px;
+  }
 }
 
 .chat-input {
