@@ -1,0 +1,116 @@
+{
+  "scenario": {
+    "title": "University controversy demo",
+    "subtitle": "A precomputed, fixture-driven replay of the five-step go-mirofish flow.",
+    "seed_excerpt": "A fictional university policy change triggers a wave of student, alumni, media, and administrator reactions across multiple social spaces.",
+    "prompt": "Simulate how this fictional scenario evolves across public discussion, identify the key actors and likely sentiment shifts, and generate a concise analysis report."
+  },
+  "benchmark": {
+    "captured_at": "2026-04-24T01:57:16Z",
+    "runtime": {
+      "backend_service": "go-mirofish-backend",
+      "gateway_service": "go-mirofish-gateway",
+      "backend_rss_kb": 75044,
+      "gateway_rss_kb": 7040
+    },
+    "stress": {
+      "request_count": 80,
+      "success_count": 80,
+      "failure_count": 0,
+      "latency_ms": {
+        "p50": 4.77,
+        "p95": 23.61,
+        "max": 33.27
+      }
+    },
+    "full_flow": {
+      "status": "blocked-by-upstream-provider",
+      "failing_stage": "Ontology generation",
+      "upstream_status": 429,
+      "upstream_error_code": "rate_limit_exceeded",
+      "note": "The local runtime stayed healthy; the external OpenAI-compatible provider exhausted quota during ontology generation."
+    }
+  },
+  "steps": [
+    {
+      "id": "graph-build",
+      "number": "01",
+      "title": "Graph Build",
+      "summary": "The seed document is parsed into actor and relationship candidates, then normalized into a graph-ready ontology.",
+      "stats": [
+        { "label": "Entity families", "value": "10" },
+        { "label": "Relation families", "value": "8" },
+        { "label": "Seed size", "value": "3.7 KB" }
+      ],
+      "bullets": [
+        "Primary actor groups: students, alumni, media, university leadership.",
+        "Narrative anchors: policy reaction, trust erosion, and amplification pressure.",
+        "Graph construction is the first live stage affected by provider quota."
+      ]
+    },
+    {
+      "id": "env-setup",
+      "number": "02",
+      "title": "Env Setup",
+      "summary": "The environment stage assembles agent personas, activity windows, posting rates, and event seeds for the simulation worlds.",
+      "stats": [
+        { "label": "Target agents", "value": "96" },
+        { "label": "Peak hours", "value": "19-22" },
+        { "label": "Round size", "value": "60 min" }
+      ],
+      "bullets": [
+        "Institutional accounts stay lower-volume but higher influence.",
+        "Student and alumni cohorts remain the most active amplifiers.",
+        "The static playground shows the expected configuration shape without spending live inference."
+      ]
+    },
+    {
+      "id": "simulation",
+      "number": "03",
+      "title": "Simulation",
+      "summary": "Dual-world replay shows how attention and sentiment move between feed-style and topic-style environments over time.",
+      "stats": [
+        { "label": "Worlds", "value": "2" },
+        { "label": "Example rounds", "value": "3" },
+        { "label": "Hot topics", "value": "4" }
+      ],
+      "bullets": [
+        "Rounds 1-2 are dominated by factual spread and institutional response.",
+        "Round 3 concentrates conflict around trust, transparency, and student voice.",
+        "In public production, this replay is static and free; real runs happen locally."
+      ]
+    },
+    {
+      "id": "report",
+      "number": "04",
+      "title": "Report",
+      "summary": "The report layer turns world-state evidence into an analyst-readable summary with causal signals and risk framing.",
+      "stats": [
+        { "label": "Sections", "value": "4" },
+        { "label": "Primary risk", "value": "Trust spiral" },
+        { "label": "Dominant tone", "value": "Concerned" }
+      ],
+      "bullets": [
+        "Student and alumni voices drive the fastest spread.",
+        "Institutional pacing affects whether the issue stabilizes or escalates.",
+        "Media participation extends the lifetime of the discussion."
+      ]
+    },
+    {
+      "id": "interaction",
+      "number": "05",
+      "title": "Deep Interaction",
+      "summary": "The playground replays a few fixed interactions so visitors can inspect the interface without spending your inference budget.",
+      "stats": [
+        { "label": "Demo replies", "value": "3" },
+        { "label": "Report tools", "value": "4" },
+        { "label": "Mode", "value": "Fixture replay" }
+      ],
+      "bullets": [
+        "\"As an alum, the issue feels bigger than the policy itself; it is about whether leadership listens at all.\"",
+        "\"Institutional posts reduce uncertainty only when they arrive before rumor hardens.\"",
+        "\"A replayed demo keeps the public playground interactive while pushing real compute to local/self-hosted mode.\""
+      ]
+    }
+  ]
+}
