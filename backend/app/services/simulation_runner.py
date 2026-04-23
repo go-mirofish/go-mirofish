@@ -4,6 +4,7 @@
 import os
 import sys
 import json
+import shutil
 import time
 import asyncio
 import threading
@@ -669,7 +670,11 @@ class SimulationRunner:
         if not state:
             raise ValueError(f"Simulation does not exist: {simulation_id}")
         
-        if state.runner_status not in [RunnerStatus.RUNNING, RunnerStatus.PAUSED]:
+        if state.runner_status not in [
+            RunnerStatus.STARTING,
+            RunnerStatus.RUNNING,
+            RunnerStatus.PAUSED,
+        ]:
             raise ValueError(f"Simulation is not running: {simulation_id}, status={state.runner_status}")
         
         state.runner_status = RunnerStatus.STOPPING
@@ -689,6 +694,31 @@ class SimulationRunner:
                 except Exception:
                     process.kill()
         
+        # Merge latest progress from run_state.json (subprocess / monitor may have written ahead of in-memory cache)
+        disk = cls._load_run_state(simulation_id)
+        if disk:
+            state.current_round = max(state.current_round, disk.current_round)
+            state.twitter_current_round = max(
+                state.twitter_current_round, disk.twitter_current_round
+            )
+            state.reddit_current_round = max(
+                state.reddit_current_round, disk.reddit_current_round
+            )
+            state.twitter_actions_count = max(
+                state.twitter_actions_count, disk.twitter_actions_count
+            )
+            state.reddit_actions_count = max(
+                state.reddit_actions_count, disk.reddit_actions_count
+            )
+            if disk.simulated_hours > state.simulated_hours:
+                state.simulated_hours = disk.simulated_hours
+            if disk.twitter_simulated_hours > state.twitter_simulated_hours:
+                state.twitter_simulated_hours = disk.twitter_simulated_hours
+            if disk.reddit_simulated_hours > state.reddit_simulated_hours:
+                state.reddit_simulated_hours = disk.reddit_simulated_hours
+            if disk.total_simulation_hours > state.total_simulation_hours:
+                state.total_simulation_hours = disk.total_simulation_hours
+        
         state.runner_status = RunnerStatus.STOPPED
         state.twitter_running = False
         state.reddit_running = False
@@ -705,6 +735,99 @@ class SimulationRunner:
         
         logger.info(f"Simulation stopped: {simulation_id}")
         return state
+
+    @classmethod
+    def purge_simulation(cls, simulation_id: str) -> Dict[str, Any]:
+        """
+        Stop the runner if needed, release resources, and delete uploads/simulations/{simulation_id}.
+        Safe to call when the simulation is already stopped or missing on disk.
+        """
+        warnings: List[str] = []
+        st = cls.get_run_state(simulation_id)
+        if st and st.runner_status == RunnerStatus.STOPPING:
+            wdeadline = time.time() + 25.0
+            while time.time() < wdeadline:
+                cur = cls.get_run_state(simulation_id)
+                if not cur or cur.runner_status != RunnerStatus.STOPPING:
+                    break
+                time.sleep(0.15)
+
+        st = cls.get_run_state(simulation_id)
+        if st and st.runner_status in (
+            RunnerStatus.STARTING,
+            RunnerStatus.RUNNING,
+            RunnerStatus.PAUSED,
+        ):
+            try:
+                cls.stop_simulation(simulation_id)
+            except ValueError as e:
+                logger.info(f"purge: stop_simulation skipped: {e}")
+                warnings.append(f"stop: {e}")
+
+        proc = cls._processes.get(simulation_id)
+        if proc and proc.poll() is None:
+            try:
+                cls._terminate_process(proc, simulation_id)
+            except Exception as e:
+                logger.warning(f"purge: terminate: {e}")
+                warnings.append(f"terminate: {e}")
+
+        t0 = time.time()
+        while simulation_id in cls._processes and time.time() - t0 < 25.0:
+            time.sleep(0.1)
+
+        mon = cls._monitor_threads.get(simulation_id)
+        if mon and mon.is_alive():
+            mon.join(timeout=20.0)
+            if mon.is_alive():
+                msg = f"Monitor thread still running for {simulation_id} after join timeout"
+                logger.warning(f"purge: {msg}")
+                warnings.append(msg)
+
+        try:
+            ZepGraphMemoryManager.stop_updater(simulation_id)
+        except Exception as e:
+            logger.warning(f"purge: zep stop: {e}")
+            warnings.append(f"zep: {e}")
+        cls._graph_memory_enabled.pop(simulation_id, None)
+
+        for fh_map in (cls._stdout_files, cls._stderr_files):
+            fh = fh_map.pop(simulation_id, None)
+            if fh:
+                try:
+                    fh.close()
+                except Exception:
+                    pass
+
+        cls._run_states.pop(simulation_id, None)
+        cls._processes.pop(simulation_id, None)
+        cls._action_queues.pop(simulation_id, None)
+        cls._monitor_threads.pop(simulation_id, None)
+
+        sim_dir = os.path.join(cls.RUN_STATE_DIR, simulation_id)
+        if os.path.exists(sim_dir):
+            try:
+                shutil.rmtree(sim_dir)
+            except Exception as e:
+                logger.error(f"purge: rmtree failed: {e}")
+                shutil.rmtree(sim_dir, ignore_errors=True)
+                if os.path.exists(sim_dir):
+                    return {
+                        "success": False,
+                        "simulation_id": simulation_id,
+                        "warnings": warnings + [f"rmtree: {e}"],
+                    }
+                warnings.append(f"rmtree recovered: {e}")
+
+        if warnings:
+            logger.info(f"purge: completed with warnings: {simulation_id} — {warnings}")
+        else:
+            logger.info(f"purge: completed: {simulation_id}")
+        return {
+            "success": True,
+            "simulation_id": simulation_id,
+            "warnings": warnings,
+        }
     
     @classmethod
     def _read_actions_from_file(
