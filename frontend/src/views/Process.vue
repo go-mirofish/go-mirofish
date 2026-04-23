@@ -181,15 +181,15 @@
           <div v-else-if="currentPhase < 1" class="graph-waiting">
             <div class="waiting-icon">
               <svg viewBox="0 0 100 100" class="network-icon">
-                <circle cx="50" cy="20" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <circle cx="20" cy="60" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <circle cx="80" cy="60" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <circle cx="50" cy="80" r="8" fill="none" stroke="#000" stroke-width="1.5"/>
-                <line x1="50" y1="28" x2="25" y2="54" stroke="#000" stroke-width="1"/>
-                <line x1="50" y1="28" x2="75" y2="54" stroke="#000" stroke-width="1"/>
-                <line x1="28" y1="60" x2="72" y2="60" stroke="#000" stroke-width="1" stroke-dasharray="4"/>
-                <line x1="50" y1="72" x2="26" y2="66" stroke="#000" stroke-width="1"/>
-                <line x1="50" y1="72" x2="74" y2="66" stroke="#000" stroke-width="1"/>
+                <circle cx="50" cy="20" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="20" cy="60" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="80" cy="60" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <circle cx="50" cy="80" r="8" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                <line x1="50" y1="28" x2="25" y2="54" stroke="currentColor" stroke-width="1"/>
+                <line x1="50" y1="28" x2="75" y2="54" stroke="currentColor" stroke-width="1"/>
+                <line x1="28" y1="60" x2="72" y2="60" stroke="currentColor" stroke-width="1" stroke-dasharray="4"/>
+                <line x1="50" y1="72" x2="26" y2="66" stroke="currentColor" stroke-width="1"/>
+                <line x1="50" y1="72" x2="74" y2="66" stroke="currentColor" stroke-width="1"/>
               </svg>
             </div>
             <p class="waiting-text">Waiting for ontology generation</p>
@@ -418,6 +418,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import * as d3 from 'd3'
+import { themeResolved } from '../composables/theme.js'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import SiteFooter from '../components/SiteFooter.vue'
 
@@ -853,7 +854,7 @@ const renderGraph = () => {
       .attr('x', width / 2)
       .attr('y', height / 2)
       .attr('text-anchor', 'middle')
-      .attr('fill', '#999')
+      .attr('fill', 'var(--doc-muted, #6b7280)')
       .text('Waiting for graph data...')
     return
   }
@@ -922,9 +923,9 @@ const renderGraph = () => {
     })
   
   const link = linkGroup.append('line')
-    .attr('stroke', '#ccc')
+    .attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)')
     .attr('stroke-width', 1.5)
-    .attr('stroke-opacity', 0.6)
+    .attr('stroke-opacity', 0.75)
   
   linkGroup.append('line')
     .attr('stroke', 'transparent')
@@ -937,7 +938,7 @@ const renderGraph = () => {
     .enter()
     .append('text')
     .attr('font-size', '9px')
-    .attr('fill', '#999')
+    .attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
     .attr('text-anchor', 'middle')
     .text(d => d.type.length > 15 ? d.type.substring(0, 12) + '...' : d.type)
   
@@ -960,7 +961,7 @@ const renderGraph = () => {
   node.append('circle')
     .attr('r', 10)
     .attr('fill', d => colorScale(d.type))
-    .attr('stroke', '#fff')
+    .attr('stroke', 'var(--doc-graph-node-stroke, #fff)')
     .attr('stroke-width', 2)
     .attr('class', 'node-circle')
   
@@ -969,7 +970,7 @@ const renderGraph = () => {
     .attr('dy', 4)
     .text(d => d.name?.substring(0, 12) || '')
     .attr('font-size', '11px')
-    .attr('fill', '#333')
+    .attr('fill', 'var(--doc-graph-node-label, var(--doc-text))')
     .attr('font-family', 'JetBrains Mono, monospace')
   
   svg.on('click', () => {
@@ -1014,6 +1015,12 @@ watch(graphData, () => {
   }
 })
 
+watch(themeResolved, () => {
+  if (graphData.value) {
+    nextTick(() => renderGraph())
+  }
+})
+
 onMounted(() => {
   initProject()
 })
@@ -1028,10 +1035,16 @@ onUnmounted(() => {
 .process-page {
   --black: #000000;
   --white: #ffffff;
-  --orange: #00add8;
+  --orange: var(--doc-accent, #00add8);
   --gray-light: #f5f5f5;
   --gray-border: #e0e0e0;
   --gray-text: #666666;
+  /* Top bar: dark strip in light mode, doc shell in dark mode */
+  --process-nav-bg: #0a0a0a;
+  --process-nav-fg: #ffffff;
+  --process-accent-tint: color-mix(in srgb, var(--orange) 12%, var(--white));
+  --process-success-tint: color-mix(in srgb, #1a936f 10%, var(--white));
+  --process-accent-border: color-mix(in srgb, var(--orange) 32%, var(--gray-border));
   min-height: 100vh;
   background: var(--white);
   font-family: 'JetBrains Mono', 'Noto Sans SC', monospace;
@@ -1052,10 +1065,11 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 24px;
   height: 56px;
-  background: #000;
-  color: #fff;
+  background: var(--process-nav-bg);
+  color: var(--process-nav-fg);
   z-index: 10;
   position: relative;
+  border-bottom: 1px solid color-mix(in srgb, var(--process-nav-fg) 8%, transparent);
 }
 
 .nav-brand {
@@ -1080,8 +1094,8 @@ onUnmounted(() => {
 }
 
 .step-badge {
-  background: #00ADD8;
-  color: #fff;
+  background: var(--orange);
+  color: var(--white);
   padding: 2px 8px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -1092,7 +1106,7 @@ onUnmounted(() => {
 .step-name {
   font-size: 0.85rem;
   letter-spacing: 0.05em;
-  color: #fff;
+  color: var(--process-nav-fg);
 }
 
 .nav-status {
@@ -1104,12 +1118,12 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #666;
+  background: var(--gray-text);
   margin-right: 8px;
 }
 
 .status-dot.processing {
-  background: #00ADD8;
+  background: var(--orange);
   animation: pulse 1.5s infinite;
 }
 
@@ -1170,7 +1184,7 @@ onUnmounted(() => {
 }
 
 .header-deco {
-  color: #00ADD8;
+  color: var(--orange);
   font-size: 0.8rem;
 }
 
@@ -1280,7 +1294,7 @@ onUnmounted(() => {
 .loading-ring:nth-child(1) {
   width: 80px;
   height: 80px;
-  border-top-color: #000;
+  border-top-color: var(--black);
 }
 
 .loading-ring:nth-child(2) {
@@ -1288,7 +1302,7 @@ onUnmounted(() => {
   height: 60px;
   top: 10px;
   left: 10px;
-  border-right-color: #00ADD8;
+  border-right-color: var(--orange);
   animation-delay: 0.2s;
 }
 
@@ -1326,6 +1340,7 @@ onUnmounted(() => {
   width: 100px;
   height: 100px;
   opacity: 0.6;
+  color: var(--black);
 }
 
 .graph-view {
@@ -1348,16 +1363,16 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 16px;
-  background: rgba(255, 107, 53, 0.1);
-  border: 1px solid #00ADD8;
+  background: var(--doc-accent-soft, rgba(0, 173, 216, 0.12));
+  border: 1px solid var(--orange);
   font-size: 0.8rem;
-  color: #00ADD8;
+  color: var(--orange);
 }
 
 .building-dot {
   width: 8px;
   height: 8px;
-  background: #00ADD8;
+  background: var(--orange);
   border-radius: 50%;
   animation: pulse 1s infinite;
 }
@@ -1395,7 +1410,7 @@ onUnmounted(() => {
 .detail-badge {
   padding: 2px 10px;
   font-size: 0.75rem;
-  color: #fff;
+  color: #ffffff;
   border-radius: 2px;
 }
 
@@ -1460,7 +1475,7 @@ onUnmounted(() => {
   line-height: 1.6;
   padding: 10px;
   background: var(--gray-light);
-  border-left: 3px solid #00ADD8;
+  border-left: 3px solid var(--orange);
 }
 
 .detail-labels {
@@ -1502,13 +1517,13 @@ onUnmounted(() => {
 .edge-type {
   padding: 2px 8px;
   font-size: 0.75rem;
-  background: #00ADD8;
-  color: #fff;
+  background: var(--orange);
+  color: #ffffff;
 }
 
 .detail-value.highlight {
   font-weight: 600;
-  color: #000;
+  color: var(--black);
 }
 
 .detail-subtitle {
@@ -1621,13 +1636,13 @@ onUnmounted(() => {
 }
 
 .right-panel .panel-header.dark-header {
-  background: #000;
-  color: #fff;
-  border-bottom: none;
+  background: var(--process-nav-bg);
+  color: var(--process-nav-fg);
+  border-bottom: 1px solid var(--gray-border);
 }
 
 .right-panel .header-icon {
-  color: #00ADD8;
+  color: var(--orange);
   margin-right: 8px;
 }
 
@@ -1650,7 +1665,7 @@ onUnmounted(() => {
 }
 
 .process-phase.active {
-  border-color: #00ADD8;
+  border-color: var(--orange);
 }
 
 .process-phase.completed {
@@ -1667,22 +1682,22 @@ onUnmounted(() => {
 }
 
 .process-phase.active .phase-header {
-  background: #FFF5F2;
+  background: var(--process-accent-tint);
 }
 
 .process-phase.completed .phase-header {
-  background: #F2FAF6;
+  background: var(--process-success-tint);
 }
 
 .phase-num {
   font-size: 1.5rem;
   font-weight: 700;
-  color: #ddd;
+  color: var(--gray-border);
   line-height: 1;
 }
 
 .process-phase.active .phase-num {
-  color: #00ADD8;
+  color: var(--orange);
 }
 
 .process-phase.completed .phase-num {
@@ -1708,18 +1723,18 @@ onUnmounted(() => {
 .phase-status {
   font-size: 0.75rem;
   padding: 4px 10px;
-  background: #eee;
+  background: var(--gray-light);
   color: var(--gray-text);
 }
 
 .phase-status.active {
-  background: #00ADD8;
-  color: #fff;
+  background: var(--orange);
+  color: #ffffff;
 }
 
 .phase-status.completed {
   background: #1A936F;
-  color: #fff;
+  color: #ffffff;
 }
 
 .phase-detail {
@@ -1735,7 +1750,7 @@ onUnmounted(() => {
 .entity-tag {
   font-size: 0.75rem;
   padding: 4px 10px;
-  background: #F5F5F5;
+  background: var(--gray-light);
   border: 1px solid var(--gray-border);
   color: var(--black);
 }
@@ -1749,7 +1764,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 0;
-  border-bottom: 1px dashed #eee;
+  border-bottom: 1px dashed var(--gray-border);
 }
 
 .relation-item:last-child {
@@ -1762,11 +1777,12 @@ onUnmounted(() => {
 }
 
 .rel-arrow {
-  color: #ccc;
+  color: var(--gray-text);
+  opacity: 0.7;
 }
 
 .rel-name {
-  color: #00ADD8;
+  color: var(--orange);
   font-weight: 500;
 }
 
@@ -1781,15 +1797,15 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #FFF5F2;
-  border: 1px solid #FFE0D6;
+  background: var(--process-accent-tint);
+  border: 1px solid var(--process-accent-border);
 }
 
 .progress-spinner {
   width: 20px;
   height: 20px;
-  border: 2px solid #FFE0D6;
-  border-top-color: #00ADD8;
+  border: 2px solid var(--process-accent-border);
+  border-top-color: var(--orange);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -1820,7 +1836,7 @@ onUnmounted(() => {
 
 .progress-fill {
   height: 100%;
-  background: #00ADD8;
+  background: var(--orange);
   transition: width 0.3s;
 }
 
@@ -1835,7 +1851,7 @@ onUnmounted(() => {
 }
 
 .progress-percent {
-  color: #00ADD8;
+  color: var(--orange);
   font-weight: 600;
 }
 
@@ -1848,14 +1864,14 @@ onUnmounted(() => {
   flex: 1;
   text-align: center;
   padding: 12px;
-  background: #F5F5F5;
+  background: var(--gray-light);
 }
 
 .result-value {
   display: block;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #000;
+  color: var(--black);
   margin-bottom: 4px;
 }
 
@@ -1879,8 +1895,8 @@ onUnmounted(() => {
   justify-content: center;
   gap: 10px;
   padding: 16px;
-  background: #000;
-  color: #fff;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #ffffff);
   border: none;
   font-size: 1rem;
   font-weight: 500;
@@ -1890,11 +1906,13 @@ onUnmounted(() => {
 }
 
 .next-step-btn:hover:not(:disabled) {
-  background: #00ADD8;
+  background: var(--orange);
+  color: #ffffff;
 }
 
 .next-step-btn:disabled {
-  background: #ccc;
+  background: var(--doc-cta-locked-bg, #e5e7eb);
+  color: var(--doc-cta-locked-fg, #9ca3af);
   cursor: not-allowed;
 }
 
@@ -1916,7 +1934,7 @@ onUnmounted(() => {
 }
 
 .project-icon {
-  color: #00ADD8;
+  color: var(--orange);
 }
 
 .project-title {
@@ -1991,5 +2009,10 @@ html[data-theme='dark'] .process-page {
   --gray-light: #181b24;
   --gray-border: #2f333d;
   --gray-text: #9ca3af;
+  --process-nav-bg: #12141a;
+  --process-nav-fg: #e4e4e7;
+  --process-accent-tint: color-mix(in srgb, var(--orange) 16%, var(--white));
+  --process-success-tint: color-mix(in srgb, #4ade80 12%, var(--white));
+  --process-accent-border: color-mix(in srgb, var(--orange) 38%, var(--gray-border));
 }
 </style>
