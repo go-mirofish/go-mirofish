@@ -400,6 +400,9 @@ class SimulationManager:
     
     def get_simulation(self, simulation_id: str) -> Optional[SimulationState]:
         return self._load_simulation_state(simulation_id)
+
+    def remove_simulation(self, simulation_id: str) -> None:
+        self._simulations.pop(simulation_id, None)
     
     def list_simulations(self, project_id: Optional[str] = None) -> List[SimulationState]:
         simulations = []
