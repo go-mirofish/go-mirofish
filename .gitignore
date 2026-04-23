@@ -52,7 +52,9 @@ htmlcov/
 # Local docs and test programs
 mydoc/
 mytest/
-docs/hybrid/*
+docs/hybrid/capture-checklist.md
+docs/hybrid/benchmark-proof-template.md
+benchmark/results/
 
 # Log files
 backend/logs/
