@@ -14,7 +14,12 @@
     "build": "npm run build --prefix frontend",
     "build:gateway": "node scripts/dev/build-gateway.cjs",
     "changelog:release": "node scripts/release/update-changelog.cjs",
-    "changeset": "changeset"
+    "release:notes": "node scripts/release/extract-release-notes.cjs",
+    "changeset": "changeset",
+    "commit": "node scripts/commit/cli/index.js commit",
+    "commit:dry": "node scripts/commit/cli/index.js commit --dry-run",
+    "commit:cli": "node scripts/commit/cli/index.js --help",
+    "security:check": "node scripts/commit/security-check.js"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.12",
