@@ -10,8 +10,7 @@
 [![Python](https://img.shields.io/badge/Python-3.11.x-blue.svg?style=flat-square)](https://www.python.org/)
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/justinedevs?style=flat-square&logo=github&label=Sponsor)](https://github.com/sponsors/go-mirofish)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/justinedevs)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat-square&logo=discord&logoColor=white)](http://discord.gg/ePf5aPaHnA)
-[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/mirofish_ai)
+[![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/trader2g)
 
 </div>
 
@@ -88,15 +87,65 @@ Upload documents, describe what you want to predict, and get a full simulation r
 
 ## Showcase Proof
 
-For first-party `go-mirofish` proof artifacts, see [docs/hybrid/showcase.md](./docs/hybrid/showcase.md).
+Current first-party benchmark result:
 
-That page tracks:
+- backend boot: pass
+- gateway boot: pass
+- bounded stress pass: pass
+- full benchmark flow: in progress but not fully green yet
+
+Latest measured stress numbers:
+
+- requests: `80`
+- successes: `80`
+- failures: `0`
+- latency p50: about `4-5ms`
+- latency p95: about `24-25ms`
+
+Latest end-to-end benchmark status:
+
+- ontology generation: pass
+- graph build: pass
+- deeper runtime phases are now reachable under the corrected Gemini/OpenAI-compatible configuration
+- the remaining failures are no longer endpoint/model wiring failures; they are downstream execution issues in the long-running benchmark path
+
+Supporting proof surfaces in this repo:
 
 - benchmark fixture and harness
 - contract verification
 - gateway tests
 - hybrid startup verification
 - the current status of first-party screenshots and demo capture
+
+Detailed benchmark and showcase pages:
+
+- [docs/hybrid/benchmark-report.md](./docs/hybrid/benchmark-report.md)
+- [docs/hybrid/showcase.md](./docs/hybrid/showcase.md)
+
+## Production Split
+
+- Docs / landing / showcase: static
+- Interactive playground: fixture-driven and precomputed, with no shared live inference
+- Real product: local / self-hosted
+- Optional advanced mode: BYOK
+
+The homepage now follows that split:
+
+- public visitors get a zero-cost static playground replay
+- real runs happen only after connecting a local backend
+- advanced users can point the backend at their own provider keys or local OpenAI-compatible models
+
+## Go Migration
+
+Current state:
+
+- Go owns the gateway and parts of the runtime/deployment surface
+- Python still owns the core engine and most business logic
+
+Migration docs:
+
+- [docs/hybrid/go-migration-plan.md](./docs/hybrid/go-migration-plan.md)
+- [docs/hybrid/go-parity-matrix.md](./docs/hybrid/go-parity-matrix.md)
 
 ## Hardware compatibility
 
@@ -109,6 +158,9 @@ That page tracks:
 
 > [!WARNING]
 > Large graphs, long simulations, or heavy models can exceed **4GB** systems. Start with short runs and smaller seeds.
+
+> [!NOTE]
+> Hardware and runtime claims should be read together with the inline benchmark summary above, the detailed report in [docs/hybrid/benchmark-report.md](./docs/hybrid/benchmark-report.md), and the validation policy in [docs/hybrid/raspberry-pi-validation.md](./docs/hybrid/raspberry-pi-validation.md).
 
 ## Contributing
 
