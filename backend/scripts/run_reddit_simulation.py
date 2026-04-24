@@ -116,11 +116,29 @@ except ImportError as e:
 IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
+STATE_FILE = "state.json"
 
 class CommandType:
     INTERVIEW = "interview"
     BATCH_INTERVIEW = "batch_interview"
     CLOSE_ENV = "close_env"
+
+
+def _merge_state(simulation_dir: str, updates: Dict[str, Any]) -> None:
+    state_path = os.path.join(simulation_dir, STATE_FILE)
+    state: Dict[str, Any] = {}
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                state = loaded
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    state.update(updates)
+    state["updated_at"] = datetime.now().isoformat()
+    with open(state_path, 'w', encoding='utf-8') as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
 
 
 class IPCHandler:
@@ -476,8 +494,7 @@ class RedditSimulationRunner:
         print("Loading agent profiles...")
         profile_path = self._get_profile_path()
         if not os.path.exists(profile_path):
-            print(f"Error: profile file does not exist: {profile_path}")
-            return
+            raise FileNotFoundError(f"Reddit profile file does not exist: {profile_path}")
         
         self.agent_graph = await generate_reddit_agent_graph(
             profile_path=profile_path,
@@ -634,13 +651,45 @@ async def main():
         sys.exit(1)
     
     simulation_dir = os.path.dirname(args.config) or "."
+    _merge_state(
+        simulation_dir,
+        {
+            "status": "running",
+            "twitter_status": "skipped",
+            "reddit_status": "running",
+            "error": None,
+        },
+    )
     setup_oasis_logging(os.path.join(simulation_dir, "log"))
     
     runner = RedditSimulationRunner(
         config_path=args.config,
         wait_for_commands=not args.no_wait
     )
-    await runner.run(max_rounds=args.max_rounds)
+    try:
+        await runner.run(max_rounds=args.max_rounds)
+    except Exception as exc:
+        _merge_state(
+            simulation_dir,
+            {
+                "status": "failed",
+                "twitter_status": "skipped",
+                "reddit_status": "failed",
+                "error": str(exc),
+                "completed_at": datetime.now().isoformat(),
+            },
+        )
+        raise
+    _merge_state(
+        simulation_dir,
+        {
+            "status": "completed",
+            "twitter_status": "skipped",
+            "reddit_status": "completed",
+            "error": None,
+            "completed_at": datetime.now().isoformat(),
+        },
+    )
 
 
 def setup_signal_handlers():
