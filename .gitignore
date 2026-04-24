@@ -59,6 +59,7 @@ benchmark/results/
 # Log files
 backend/logs/
 *.log
+benchmark/
 
 # Uploaded files
 backend/uploads/
