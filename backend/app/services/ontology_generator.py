@@ -10,16 +10,49 @@ from ..utils.locale import get_language_instruction
 
 logger = logging.getLogger(__name__)
 
+MAX_ENTITY_TYPES = 10
+MAX_EDGE_TYPES = 10
+MAX_SOURCE_TARGETS = 10
+MAX_DESCRIPTION_LENGTH = 100
+FALLBACK_ENTITY_NAMES = ("Person", "Organization")
+RESERVED_ATTRIBUTE_NAMES = {"name", "uuid", "group_id", "created_at", "summary"}
+
+
+def _to_snake_case(name: str) -> str:
+    normalized = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', str(name))
+    normalized = re.sub(r'[^a-zA-Z0-9]+', '_', normalized)
+    normalized = normalized.strip('_').lower()
+    return normalized or "attribute"
+
+
+def _to_upper_snake_case(name: str) -> str:
+    return _to_snake_case(name).upper()
+
+
+def _shorten_description(value: Any) -> str:
+    text = str(value or "").strip()
+    if len(text) <= MAX_DESCRIPTION_LENGTH:
+        return text
+    return text[:MAX_DESCRIPTION_LENGTH - 3].rstrip() + "..."
+
 
 def _normalize_attr_item(raw: Any) -> Optional[Dict[str, str]]:
     """LLMs sometimes return attribute names as plain strings; graph build expects dicts with 'name'."""
     if isinstance(raw, dict) and raw.get("name"):
-        return raw
+        normalized_name = _to_snake_case(raw["name"])
+        if normalized_name in RESERVED_ATTRIBUTE_NAMES:
+            normalized_name = f"{normalized_name}_value"
+        return {
+            "name": normalized_name,
+            "type": raw.get("type", "text"),
+            "description": _shorten_description(raw.get("description", raw["name"])),
+        }
     if isinstance(raw, str) and raw.strip():
         s = raw.strip()
-        # Safe snake_case-ish name (reserved names are fixed later in graph_builder)
-        name = re.sub(r"[^a-zA-Z0-9_]+", "_", s).strip("_").lower() or "attribute"
-        return {"name": name, "type": "text", "description": s}
+        name = _to_snake_case(s)
+        if name in RESERVED_ATTRIBUTE_NAMES:
+            name = f"{name}_value"
+        return {"name": name, "type": "text", "description": _shorten_description(s)}
     return None
 
 
@@ -32,6 +65,20 @@ def _normalize_source_target(raw: Any) -> Optional[Dict[str, str]]:
     if isinstance(raw, (list, tuple)) and len(raw) >= 2:
         return {"source": str(raw[0]), "target": str(raw[1])}
     return None
+
+
+def _dedupe_source_targets(items: List[Dict[str, str]], limit: int = 10) -> List[Dict[str, str]]:
+    seen = set()
+    result: List[Dict[str, str]] = []
+    for item in sorted(items, key=lambda entry: (entry.get("source", "Entity"), entry.get("target", "Entity"))):
+        key = (item.get("source", "Entity"), item.get("target", "Entity"))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
 
 
 def _to_pascal_case(name: str) -> str:
@@ -59,14 +106,16 @@ Entity rules:
 - the last 2 must be fallback types `Person` and `Organization`
 - the first 8 must be concrete text-derived types
 - entity descriptions must be short English descriptions
+- keep descriptions concise, ideally under 12 words
 
 Relationship rules:
 - output 6-10 relationship types
 - relationship names must be English `UPPER_SNAKE_CASE`
 - each relationship must define valid `source_targets`
+- keep relationship descriptions concise, ideally under 12 words
 
 Attribute rules:
-- use 1-3 key attributes per entity type
+- use exactly 2 key attributes per entity type unless a fallback type needs 1-3
 - each attribute must be an object with "name" and "description" keys, not a bare string in the array
 - do not use reserved names such as `name`, `uuid`, `group_id`, `created_at`, or `summary`
 - prefer names like `full_name`, `org_name`, `title`, `role`, `position`, `location`, and `description`
@@ -114,8 +163,8 @@ class OntologyGenerator:
         
         result = self.llm_client.chat_json(
             messages=messages,
-            temperature=0.3,
-            max_tokens=4096
+            temperature=0,
+            max_tokens=8192
         )
         
         result = self._validate_and_process(result)
@@ -156,6 +205,8 @@ Requirements:
 3. The first 8 must be concrete text-derived types
 4. Entity types must represent real actors rather than abstract concepts
 5. Do not use reserved attribute names such as `name`, `uuid`, or `group_id`; prefer `full_name`, `org_name`, and similar alternatives
+6. Keep descriptions short and compact
+7. Prefer exactly 2 attributes per non-fallback entity type
 """
 
         return message
@@ -168,6 +219,7 @@ Requirements:
             result["edge_types"] = []
         if "analysis_summary" not in result:
             result["analysis_summary"] = ""
+        result["analysis_summary"] = str(result.get("analysis_summary", "")).strip()
 
         # Coerce list elements to objects (LLM sometimes returns strings or wrong shapes)
         entity_types: List[Dict[str, Any]] = []
@@ -214,13 +266,17 @@ Requirements:
                     na = _normalize_attr_item(a)
                     if na:
                         norm_attrs.append(na)
-            entity["attributes"] = norm_attrs
+            deduped_attrs: List[Dict[str, str]] = []
+            seen_attr_names = set()
+            for attr in sorted(norm_attrs, key=lambda item: item["name"]):
+                if attr["name"] in seen_attr_names:
+                    continue
+                seen_attr_names.add(attr["name"])
+                deduped_attrs.append(attr)
+            entity["attributes"] = deduped_attrs
             if "examples" not in entity:
                 entity["examples"] = []
-            if not isinstance(entity.get("description", ""), str):
-                entity["description"] = str(entity.get("description", ""))
-            if len(entity.get("description", "")) > 100:
-                entity["description"] = entity["description"][:97] + "..."
+            entity["description"] = _shorten_description(entity.get("description", ""))
 
         for edge in result["edge_types"]:
             st_in = edge.get("source_targets") or []
@@ -230,7 +286,7 @@ Requirements:
                     ns = _normalize_source_target(st)
                     if ns:
                         norm_st.append(ns)
-            edge["source_targets"] = norm_st
+            edge["source_targets"] = _dedupe_source_targets(norm_st, limit=MAX_SOURCE_TARGETS)
             e_attrs = edge.get("attributes") or []
             norm_ea: List[Dict[str, str]] = []
             if isinstance(e_attrs, list):
@@ -238,11 +294,15 @@ Requirements:
                     na = _normalize_attr_item(a)
                     if na:
                         norm_ea.append(na)
-            edge["attributes"] = norm_ea
-            if not isinstance(edge.get("description", ""), str):
-                edge["description"] = str(edge.get("description", ""))
-            if len(edge.get("description", "")) > 100:
-                edge["description"] = edge["description"][:97] + "..."
+            deduped_edge_attrs: List[Dict[str, str]] = []
+            seen_edge_attr_names = set()
+            for attr in sorted(norm_ea, key=lambda item: item["name"]):
+                if attr["name"] in seen_edge_attr_names:
+                    continue
+                seen_edge_attr_names.add(attr["name"])
+                deduped_edge_attrs.append(attr)
+            edge["attributes"] = deduped_edge_attrs
+            edge["description"] = _shorten_description(edge.get("description", ""))
         
         entity_name_map = {}
         for entity in result["entity_types"]:
@@ -259,10 +319,12 @@ Requirements:
             if len(entity.get("description", "")) > 100:
                 entity["description"] = entity["description"][:97] + "..."
         
+        valid_entity_names = {entity["name"] for entity in result["entity_types"] if entity.get("name")}
+
         for edge in result["edge_types"]:
             if "name" in edge:
                 original_name = edge["name"]
-                edge["name"] = str(original_name).upper()
+                edge["name"] = _to_upper_snake_case(original_name)
                 if edge["name"] != original_name:
                     logger.warning(f"Edge type name '{original_name}' auto-converted to '{edge['name']}'")
             for st in edge.get("source_targets", []):
@@ -272,16 +334,18 @@ Requirements:
                     st["source"] = entity_name_map[st["source"]]
                 if st.get("target") in entity_name_map:
                     st["target"] = entity_name_map[st["target"]]
+            edge["source_targets"] = _dedupe_source_targets([
+                st for st in edge.get("source_targets", [])
+                if isinstance(st, dict)
+                and st.get("source") in valid_entity_names
+                and st.get("target") in valid_entity_names
+            ], limit=MAX_SOURCE_TARGETS)
             if "source_targets" not in edge:
                 edge["source_targets"] = []
             if "attributes" not in edge:
                 edge["attributes"] = []
-            if len(edge.get("description", "")) > 100:
-                edge["description"] = edge["description"][:97] + "..."
+            edge["description"] = _shorten_description(edge.get("description", ""))
         
-        MAX_ENTITY_TYPES = 10
-        MAX_EDGE_TYPES = 10
-
         seen_names = set()
         deduped = []
         for entity in result["entity_types"]:
@@ -336,8 +400,30 @@ Requirements:
         if len(result["entity_types"]) > MAX_ENTITY_TYPES:
             result["entity_types"] = result["entity_types"][:MAX_ENTITY_TYPES]
         
+        seen_edge_names = set()
+        deduped_edges = []
+        for edge in result["edge_types"]:
+            name = edge.get("name", "")
+            if name and name not in seen_edge_names:
+                seen_edge_names.add(name)
+                deduped_edges.append(edge)
+            elif name in seen_edge_names:
+                logger.warning(f"Duplicate edge type '{name}' removed during validation")
+        result["edge_types"] = deduped_edges
+
         if len(result["edge_types"]) > MAX_EDGE_TYPES:
             result["edge_types"] = result["edge_types"][:MAX_EDGE_TYPES]
+
+        non_fallback_entities = [
+            entity for entity in result["entity_types"]
+            if entity.get("name") not in FALLBACK_ENTITY_NAMES
+        ]
+        fallback_entities = [
+            entity for entity in result["entity_types"]
+            if entity.get("name") in FALLBACK_ENTITY_NAMES
+        ]
+        fallback_entities.sort(key=lambda entity: FALLBACK_ENTITY_NAMES.index(entity["name"]))
+        result["entity_types"] = non_fallback_entities + fallback_entities
         
         return result
     
