@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./static/image/go-mirofish-thumbnail.png" alt="go-mirofish logo" width="55%"/>
+<img src="./static/image/go-mirofish-thumbnail (transparent).png" alt="go-mirofish logo" width="55%"/>
 
 **go-mirofish, lightweight and local-first**
 
@@ -16,7 +16,7 @@
 
 Upload documents, describe what you want to predict, and get a full simulation report **on your laptop**.
 
-**Production site:** [go.mirofish.ai](https://go.mirofish.ai)
+**Public preview (Vercel):** [gomirofish.vercel.app](https://gomirofish.vercel.app) — custom domain **go.mirofish.ai** is pending (subdomain access with the domain holder is still in progress).
 
 > [!NOTE]
 > **go-mirofish** is a lightweight fork of [MiroFish](https://github.com/666ghj/MiroFish). The AI features and five-step workflow are the same; **only the web and runtime layer** is optimized for local-first, lower-overhead deployment.
@@ -87,35 +87,145 @@ Upload documents, describe what you want to predict, and get a full simulation r
 
 ## Showcase Proof
 
-Current first-party benchmark result:
+The proof surface is now split in two:
 
-- backend boot: pass
-- gateway boot: pass
-- bounded stress pass: pass
-- full benchmark flow: in progress but not fully green yet
+- live-stack benchmark proof for the real Go gateway + backend runtime
+- example-suite benchmark proof for the five plug-and-play local templates
 
-Latest measured stress numbers:
+Current captured result:
 
-- requests: `80`
-- successes: `80`
-- failures: `0`
-- latency p50: about `4-5ms`
-- latency p95: about `24-25ms`
+| Proof surface | Status | Evidence |
+| --- | --- | --- |
+| Backend boot | `PASS` | backend health responded as `go-mirofish-backend` |
+| Go gateway boot | `PASS` | gateway health responded as `go-mirofish-gateway` |
+| Bounded stress pass | `PASS` | `80/80` requests succeeded |
+| Latency envelope | `PASS` | p50 `4.55ms`, p95 `24.59ms`, max `29.0ms` |
+| Full benchmark flow | `PASS` | project, graph, simulation, and report IDs were all captured |
+| Report artifact quality | `PASS` | benchmark completed with `report_non_empty=true` in the latest captured run |
 
-Latest end-to-end benchmark status:
+Current benchmark phase evidence:
 
-- ontology generation: pass
-- graph build: pass
-- deeper runtime phases are now reachable under the corrected Gemini/OpenAI-compatible configuration
-- the remaining failures are no longer endpoint/model wiring failures; they are downstream execution issues in the long-running benchmark path
+| Phase | Status | Evidence |
+| --- | --- | --- |
+| Ontology generation | `PASS` | `project_id=proj_57e3f0da8a33` |
+| Graph build | `PASS` | `graph_id=go_mirofish_20fe3c512dea4b74` |
+| Simulation create | `PASS` | `simulation_id=sim_553008e20bc1` |
+| Simulation run | `PASS` | `simulation_status=completed` |
+| Report generation | `PASS` | `report_id=report_6238622d5fd4`, `report_status=completed` |
+| Report content | `PASS` | `report_non_empty=true` |
 
-Supporting proof surfaces in this repo:
+What that means:
 
-- benchmark fixture and harness
-- contract verification
-- gateway tests
-- hybrid startup verification
-- the current status of first-party screenshots and demo capture
+- the hybrid go-mirofish stack is benchmark-verified end to end
+- the Go gateway is part of the measured request path, so this is not just inherited MiroFish behavior
+- the latest captured run now completes with a non-empty report artifact
+
+Current example-suite benchmark results:
+
+| Example | Profile | Status | Startup | Runtime | Artifact |
+| --- | --- | --- | ---: | ---: | --- |
+| Product Launch PR War Room | `medium` | `PASS` | `10.93ms` | `19.81ms` | `risk_report.json` |
+| Hyper-Local Urban Planning | `medium` | `PASS` | `17.58ms` | `34.34ms` | `coalition_highway.json`, `coalition_park.json` |
+| Zero-Day Cyber Incident Drill | `medium` | `PASS` | `10.70ms` | `20.50ms` | `incident_report.json` |
+| De-Fi Sentiment Stress-Test | `medium` | `PASS` | `6.92ms` | `15.97ms` | `liquidation_cascade_forecast.json` |
+| Lost Ending Literary Simulator | `medium` | `PASS` | `15.04ms` | `26.59ms` | `draft_ending.json`, `draft_ending.txt` |
+
+What the example suite proves:
+
+- `product-launch-war-room` proves concurrent multi-agent crisis analysis with a concrete risk report
+- `hyperlocal-urban-planning` proves edge-friendly local coalition modeling with two scenario variants
+- `zero-day-incident-drill` proves privacy-preserving internal/external rumor modeling without a cloud dependency
+- `defi-sentiment-stress-test` proves offline-first sentiment cascade modeling with explicit panic threshold output
+- `lost-ending-literary-simulator` proves structured creative simulation with consistency scoring, not just enterprise-only flows
+
+Read the evidence in detail:
+
+- [Benchmark report](./docs/hybrid/benchmark-report.md)
+- [Go parity matrix](./docs/hybrid/go-parity-matrix.md)
+- [Go migration plan](./docs/hybrid/go-migration-plan.md)
+- [Showcase policy](./docs/hybrid/showcase.md)
+- `benchmark/results/examples-benchmark-suite.json` (local capture; path may be gitignored)
+- `benchmark/results/smoke/latest.json`
+- `docs/bundled-benchmarks/*.json` — short names for the in-app benchmark report (committed)
+
+## Examples & Benchmarks
+
+List examples:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --list
+```
+
+Run one example:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --example product-launch-war-room --profile medium
+```
+
+Run smoke validation for all examples:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --all --smoke-only --profile small
+```
+
+Run the benchmark suite:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --all --bench-only --profile medium
+```
+
+Compare two benchmark runs:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --compare docs/bundled-benchmarks/product-launch__small__latest.json,docs/bundled-benchmarks/literary-sim__small__latest.json
+```
+
+## 🌐 Live Demo
+
+- Static playground (zero-cost replay): [gomirofish.vercel.app](https://gomirofish.vercel.app)
+
+## 📸 Screenshots
+
+<div align="center">
+  <table>
+    <tr>
+      <td align="center">
+        <img src="static/image/Screenshot/Screenshot(1).png" width="520" />
+        <br />
+        <sub><b>Home / entry</b></sub>
+      </td>
+      <td align="center">
+        <img src="static/image/Screenshot/Screenshot(2).png" width="520" />
+        <br />
+        <sub><b>Simulation run</b></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <img src="static/image/Screenshot/Screenshot(3).png" width="520" />
+        <br />
+        <sub><b>Report generation</b></sub>
+      </td>
+      <td align="center">
+        <img src="static/image/Screenshot/Screenshot(4).png" width="520" />
+        <br />
+        <sub><b>Report timeline / tools</b></sub>
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <img src="static/image/Screenshot/Screenshot(5).png" width="520" />
+        <br />
+        <sub><b>Simulation history</b></sub>
+      </td>
+      <td align="center">
+        <img src="static/image/Screenshot/Screenshot(6).png" width="520" />
+        <br />
+        <sub><b>Deep interaction</b></sub>
+      </td>
+    </tr>
+  </table>
+</div>
 
 ## Production Split
 
@@ -134,8 +244,9 @@ The homepage now follows that split:
 
 Current state:
 
-- Go owns the gateway and parts of the runtime/deployment surface
-- Python still owns the core engine and most business logic
+- Go owns the public control plane, public routes, runner CLI, example suite, benchmark suite, provider layer, memory layer, and route orchestration
+- Python no longer owns the public API surface
+- Python remains as the simulation worker/runtime boundary and private worker internals
 
 ## Hardware compatibility
 
@@ -154,7 +265,7 @@ Current state:
 
 ## Contributing
 
-Issues and PRs are welcome. Use this repo for **go-mirofish** changes; upstream product discussion stays with [MiroFish](https://github.com/666ghj/MiroFish). Start with **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[docs/contributing/README.md](docs/contributing/README.md)** (6-layer PR planning, Husky, Commitlint, Changesets, Renovate). Longer guides and the Phase 1–6 roadmap will also live on **[go.mirofish.ai](https://go.mirofish.ai)** as the docs site grows.
+Issues and PRs are welcome. Use this repo for **go-mirofish** changes; upstream product discussion stays with [MiroFish](https://github.com/666ghj/MiroFish). Start with **[CONTRIBUTING.md](CONTRIBUTING.md)** and **[docs/contributing/README.md](docs/contributing/README.md)** (6-layer PR planning, Husky, Commitlint, Changesets, Renovate). Longer guides and the Phase 1–6 roadmap will also live on **[gomirofish.vercel.app](https://gomirofish.vercel.app)** (and on **go.mirofish.ai** once the custom domain is connected).
 
 ## License
 
