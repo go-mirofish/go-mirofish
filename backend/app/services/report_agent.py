@@ -941,6 +941,71 @@ class ReportAgent:
             if params_desc:
                 desc_parts.append(f"  Parameters: {params_desc}")
         return "\n".join(desc_parts)
+
+    def _normalize_section_output(self, content: str, section_title: str) -> str:
+        """
+        Normalize LLM section output into publishable section markdown.
+        """
+        if not content:
+            return ""
+
+        cleaned = content.strip()
+        cleaned = re.sub(r'^\s*Final Answer:\s*', '', cleaned, flags=re.IGNORECASE)
+
+        fenced_match = re.fullmatch(r"```(?:markdown|md)?\s*(.*?)\s*```", cleaned, re.DOTALL | re.IGNORECASE)
+        if fenced_match:
+            cleaned = fenced_match.group(1).strip()
+
+        cleaned = re.sub(
+            r'^\s*(?:Here is (?:the )?section|Section content|Section draft|Draft section)\s*:?\s*',
+            '',
+            cleaned,
+            flags=re.IGNORECASE,
+        )
+        cleaned = ReportManager._clean_section_content(cleaned, section_title).strip()
+
+        return cleaned
+
+    def _is_meaningful_section_output(self, content: str) -> bool:
+        """
+        Reject empty, ultra-short, or obviously meta/non-report content.
+        """
+        if not content:
+            return False
+
+        plain = re.sub(r'[`*_>#-]', ' ', content)
+        plain = re.sub(r'\s+', ' ', plain).strip()
+
+        if len(plain) < 120:
+            return False
+
+        lower_plain = plain.lower()
+        meta_prefixes = (
+            "i need more information",
+            "i need more evidence",
+            "i don't have enough information",
+            "there is not enough information",
+            "insufficient information",
+            "unable to generate",
+            "cannot generate",
+            "i cannot generate",
+            "no relevant information",
+            "the evidence is insufficient",
+        )
+        if lower_plain.startswith(meta_prefixes):
+            return False
+
+        sentence_count = len(re.findall(r'[.!?](?:\s|$)', plain))
+        bullet_count = len(re.findall(r'^\s*[-*]\s+', content, re.MULTILINE))
+        quote_count = len(re.findall(r'^\s*>\s+', content, re.MULTILINE))
+        paragraph_count = len([p for p in re.split(r'\n\s*\n', content) if p.strip()])
+
+        return (
+            sentence_count >= 2
+            or bullet_count >= 2
+            or quote_count >= 1
+            or paragraph_count >= 2
+        )
     
     def plan_outline(
         self, 
@@ -1160,7 +1225,28 @@ class ReportAgent:
                     })
                     continue
 
-                final_answer = response.split("Final Answer:")[-1].strip()
+                final_answer = self._normalize_section_output(
+                    response.split("Final Answer:")[-1].strip(),
+                    section.title
+                )
+
+                if not self._is_meaningful_section_output(final_answer):
+                    messages.append({"role": "assistant", "content": response})
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            "Your Final Answer is too thin or meta to publish as a report section.\n"
+                            "Rewrite the section body now using the evidence already gathered.\n"
+                            "Requirements:\n"
+                            "- no headings\n"
+                            "- no planning/meta commentary\n"
+                            "- at least two solid paragraphs or equivalent structured content\n"
+                            "- include concrete evidence, agent behavior, or quoted material from the retrieved results\n"
+                            "- begin with 'Final Answer:'"
+                        ),
+                    })
+                    continue
+
                 logger.info(t('report.sectionGenDone', title=section.title, count=tool_calls_count))
 
                 if self.report_logger:
@@ -1251,7 +1337,20 @@ class ReportAgent:
                 continue
 
             logger.info(t('report.sectionNoPrefix', title=section.title, count=tool_calls_count))
-            final_answer = response.strip()
+            final_answer = self._normalize_section_output(response, section.title)
+
+            if not self._is_meaningful_section_output(final_answer):
+                messages.append({"role": "assistant", "content": response})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        "That reply is not yet a publishable section.\n"
+                        "Write the actual section body now using the evidence already gathered.\n"
+                        "Do not add headings or meta commentary.\n"
+                        "Provide substantive report content only."
+                    ),
+                })
+                continue
 
             if self.report_logger:
                 self.report_logger.log_section_content(
@@ -1275,10 +1374,38 @@ class ReportAgent:
             logger.error(t('report.sectionForceFailed', title=section.title))
             final_answer = t('report.sectionGenFailedContent')
         elif "Final Answer:" in response:
-            final_answer = response.split("Final Answer:")[-1].strip()
+            final_answer = self._normalize_section_output(
+                response.split("Final Answer:")[-1].strip(),
+                section.title
+            )
         else:
-            final_answer = response
-        
+            final_answer = self._normalize_section_output(response, section.title)
+
+        if final_answer and not self._is_meaningful_section_output(final_answer):
+            messages.append({"role": "assistant", "content": response or ""})
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Produce a final publishable section now.\n"
+                    "Use only the evidence already gathered.\n"
+                    "No headings, no meta commentary, no tool calls.\n"
+                    "Write substantive report content only and begin with 'Final Answer:'."
+                ),
+            })
+            retry_response = self.llm.chat(
+                messages=messages,
+                temperature=0.3,
+                max_tokens=4096
+            )
+            if retry_response:
+                if "Final Answer:" in retry_response:
+                    final_answer = self._normalize_section_output(
+                        retry_response.split("Final Answer:")[-1].strip(),
+                        section.title
+                    )
+                else:
+                    final_answer = self._normalize_section_output(retry_response, section.title)
+
         if self.report_logger:
             self.report_logger.log_section_content(
                 section_title=section.title,
