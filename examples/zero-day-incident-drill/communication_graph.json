@@ -1,0 +1,6 @@
+[
+  { "from": "C-Suite", "to": "Legal", "weight": 1.4 },
+  { "from": "Legal", "to": "IT Security", "weight": 1.1 },
+  { "from": "IT Security", "to": "C-Suite", "weight": 0.7 },
+  { "from": "General Public", "to": "C-Suite", "weight": 1.6 }
+]

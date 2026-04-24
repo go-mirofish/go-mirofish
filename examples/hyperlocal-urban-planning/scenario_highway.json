@@ -1,0 +1,10 @@
+{
+  "key": "highway",
+  "title": "Build Highway",
+  "adjustments": {
+    "The Elderly": -0.1,
+    "Local Business Owners": 0.2,
+    "Commuters": 0.4,
+    "Environmentalists": -0.3
+  }
+}

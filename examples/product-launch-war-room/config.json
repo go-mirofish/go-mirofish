@@ -1,0 +1,42 @@
+{
+  "example_key": "product-launch-war-room",
+  "title": "Product Launch PR War Room",
+  "agent_count": 50,
+  "duration_hours": 72,
+  "run_command": "go run ./gateway/cmd/go-mirofish-examples --example product-launch-war-room --profile medium",
+  "expected_artifacts": ["risk_report.json"],
+  "profiles": {
+    "small": {
+      "agent_count": 20,
+      "interaction_count": 72,
+      "task_count": 6,
+      "thresholds": { "startup_warn_ms": 100, "startup_fail_ms": 500, "runtime_warn_ms": 200, "runtime_fail_ms": 1500 }
+    },
+    "medium": {
+      "agent_count": 50,
+      "interaction_count": 216,
+      "task_count": 12,
+      "thresholds": { "startup_warn_ms": 150, "startup_fail_ms": 750, "runtime_warn_ms": 400, "runtime_fail_ms": 2500 }
+    },
+    "stress": {
+      "agent_count": 80,
+      "interaction_count": 432,
+      "task_count": 18,
+      "thresholds": { "startup_warn_ms": 250, "startup_fail_ms": 1000, "runtime_warn_ms": 800, "runtime_fail_ms": 4000 }
+    }
+  },
+  "persona_weights": {
+    "Privacy Advocates": 1.4,
+    "Tech Enthusiasts": 0.8,
+    "Angry Shareholders": 1.2,
+    "Casual Users": 0.7
+  },
+  "sensitivity_keywords": {
+    "monitor": 2.0,
+    "always-on": 2.4,
+    "tracking": 2.2,
+    "monetize": 1.6,
+    "share": 1.4
+  },
+  "rewrite_hints": ["always-on", "tracking", "monetize", "share"]
+}

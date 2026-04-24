@@ -1,0 +1,27 @@
+[
+  {
+    "key": "product-launch-war-room",
+    "title": "Product Launch PR War Room",
+    "description": "Simulate a 72-hour outrage cycle and generate a launch risk report."
+  },
+  {
+    "key": "hyperlocal-urban-planning",
+    "title": "Hyper-Local Urban Planning Rehearsal",
+    "description": "Model support and block coalitions for highway and park scenarios."
+  },
+  {
+    "key": "zero-day-incident-drill",
+    "title": "Zero-Day Cyber Incident Drill",
+    "description": "Model internal and external rumor spread during a breach response."
+  },
+  {
+    "key": "defi-sentiment-stress-test",
+    "title": "De-Fi Market Sentiment Stress-Test",
+    "description": "Forecast liquidation cascades and panic-sell regions."
+  },
+  {
+    "key": "lost-ending-literary-simulator",
+    "title": "Lost Ending Literary Simulator",
+    "description": "Generate a character-consistent ending from current chapter state."
+  }
+]

@@ -1,0 +1,27 @@
+{
+  "example_key": "zero-day-incident-drill",
+  "title": "Zero-Day Cyber Incident Drill",
+  "agent_count": 40,
+  "run_command": "go run ./gateway/cmd/go-mirofish-examples --example zero-day-incident-drill --profile medium",
+  "expected_artifacts": ["incident_report.json"],
+  "profiles": {
+    "small": {
+      "agent_count": 20,
+      "interaction_count": 30,
+      "task_count": 4,
+      "thresholds": { "startup_warn_ms": 100, "startup_fail_ms": 500, "runtime_warn_ms": 200, "runtime_fail_ms": 1500 }
+    },
+    "medium": {
+      "agent_count": 40,
+      "interaction_count": 60,
+      "task_count": 8,
+      "thresholds": { "startup_warn_ms": 150, "startup_fail_ms": 750, "runtime_warn_ms": 400, "runtime_fail_ms": 2500 }
+    },
+    "stress": {
+      "agent_count": 60,
+      "interaction_count": 120,
+      "task_count": 12,
+      "thresholds": { "startup_warn_ms": 250, "startup_fail_ms": 1000, "runtime_warn_ms": 800, "runtime_fail_ms": 4000 }
+    }
+  }
+}

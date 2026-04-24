@@ -1,0 +1,27 @@
+{
+  "example_key": "hyperlocal-urban-planning",
+  "title": "Hyper-Local Urban Planning Rehearsal",
+  "agent_count": 48,
+  "run_command": "go run ./gateway/cmd/go-mirofish-examples --example hyperlocal-urban-planning --profile medium",
+  "expected_artifacts": ["coalition_highway.json", "coalition_park.json"],
+  "profiles": {
+    "small": {
+      "agent_count": 24,
+      "interaction_count": 48,
+      "task_count": 2,
+      "thresholds": { "startup_warn_ms": 100, "startup_fail_ms": 500, "runtime_warn_ms": 200, "runtime_fail_ms": 1500 }
+    },
+    "medium": {
+      "agent_count": 48,
+      "interaction_count": 96,
+      "task_count": 4,
+      "thresholds": { "startup_warn_ms": 150, "startup_fail_ms": 750, "runtime_warn_ms": 400, "runtime_fail_ms": 2500 }
+    },
+    "stress": {
+      "agent_count": 72,
+      "interaction_count": 144,
+      "task_count": 6,
+      "thresholds": { "startup_warn_ms": 250, "startup_fail_ms": 1000, "runtime_warn_ms": 800, "runtime_fail_ms": 4000 }
+    }
+  }
+}

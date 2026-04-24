@@ -1,0 +1,6 @@
+[
+  { "name": "Whales", "count": 10, "cascade_sensitivity": 1.2, "pressure_multiplier": 2.0 },
+  { "name": "Paper Hands", "count": 40, "cascade_sensitivity": 1.8, "pressure_multiplier": 1.7 },
+  { "name": "Diamond Hands", "count": 30, "cascade_sensitivity": 0.5, "pressure_multiplier": 0.6 },
+  { "name": "Bot Traders", "count": 20, "cascade_sensitivity": 1.3, "pressure_multiplier": 1.1 }
+]

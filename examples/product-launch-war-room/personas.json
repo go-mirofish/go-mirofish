@@ -1,0 +1,6 @@
+[
+  { "group": "Privacy Advocates", "count": 12, "base_score": 1.7 },
+  { "group": "Tech Enthusiasts", "count": 14, "base_score": 0.9 },
+  { "group": "Angry Shareholders", "count": 10, "base_score": 1.2 },
+  { "group": "Casual Users", "count": 14, "base_score": 0.8 }
+]

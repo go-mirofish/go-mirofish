@@ -1,0 +1,51 @@
+{
+  "agent_count": 50,
+  "duration_hours": 72,
+  "example": "Product Launch PR War Room",
+  "group_breakdown": {
+    "Angry Shareholders": 48.4,
+    "Casual Users": 55.44,
+    "Privacy Advocates": 69.35999999999999,
+    "Tech Enthusiasts": 57.68
+  },
+  "most_triggering_score": 230.88,
+  "most_triggering_sentence": "Beacon+ will monitor how you use core features so we can personalize recommendations and share engagement insights with partners",
+  "ranked_sentence_scores": [
+    {
+      "sentence": "Beacon+ will monitor how you use core features so we can personalize recommendations and share engagement insights with partners",
+      "score": 230.88,
+      "by_group": {
+        "Angry Shareholders": 48.4,
+        "Casual Users": 55.44,
+        "Privacy Advocates": 69.35999999999999,
+        "Tech Enthusiasts": 57.68
+      }
+    },
+    {
+      "sentence": "Today we are launching Beacon+, an always-on assistant that helps customers unlock more value from their devices",
+      "score": 180.88,
+      "by_group": {
+        "Angry Shareholders": 38.4,
+        "Casual Users": 41.44,
+        "Privacy Advocates": 57.35999999999999,
+        "Tech Enthusiasts": 43.68
+      }
+    },
+    {
+      "sentence": "The new feature makes collaboration faster and gives every team better analytics for monetization and product planning",
+      "score": 60.879999999999995,
+      "by_group": {
+        "Angry Shareholders": 14.399999999999999,
+        "Casual Users": 7.839999999999999,
+        "Privacy Advocates": 28.56,
+        "Tech Enthusiasts": 10.080000000000002
+      }
+    }
+  ],
+  "recommended_safer_rewrite": "Beacon+ will monitor how you use core features so we can personalize recommendations and engagement insights with partners",
+  "rewrite_notes": [
+    "Reduce absolutist claims",
+    "Lead with user control",
+    "Avoid surveillance-adjacent phrasing"
+  ]
+}

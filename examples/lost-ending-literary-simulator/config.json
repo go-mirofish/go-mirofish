@@ -1,0 +1,27 @@
+{
+  "example_key": "lost-ending-literary-simulator",
+  "title": "Lost Ending Literary Simulator",
+  "agent_count": 4,
+  "run_command": "go run ./gateway/cmd/go-mirofish-examples --example lost-ending-literary-simulator --profile medium",
+  "expected_artifacts": ["draft_ending.json", "draft_ending.txt"],
+  "profiles": {
+    "small": {
+      "agent_count": 2,
+      "interaction_count": 4,
+      "task_count": 1,
+      "thresholds": { "startup_warn_ms": 100, "startup_fail_ms": 500, "runtime_warn_ms": 200, "runtime_fail_ms": 1500 }
+    },
+    "medium": {
+      "agent_count": 4,
+      "interaction_count": 8,
+      "task_count": 2,
+      "thresholds": { "startup_warn_ms": 150, "startup_fail_ms": 750, "runtime_warn_ms": 400, "runtime_fail_ms": 2500 }
+    },
+    "stress": {
+      "agent_count": 8,
+      "interaction_count": 16,
+      "task_count": 3,
+      "thresholds": { "startup_warn_ms": 250, "startup_fail_ms": 1000, "runtime_warn_ms": 800, "runtime_fail_ms": 4000 }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Mara",
+    "motivation": "protect the town archive",
+    "memory": ["the fire that erased her childhood notes"]
+  },
+  {
+    "name": "Jonas",
+    "motivation": "prove the truth about the mayor",
+    "memory": ["the hidden ledger found beneath the station"]
+  },
+  {
+    "name": "Elin",
+    "motivation": "keep her family together",
+    "memory": ["the promise she made at the river crossing"]
+  },
+  {
+    "name": "Toma",
+    "motivation": "leave the town with dignity",
+    "memory": ["the letter he never sent"]
+  }
+]

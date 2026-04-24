@@ -1,0 +1,10 @@
+{
+  "key": "park",
+  "title": "Build Park",
+  "adjustments": {
+    "The Elderly": 0.3,
+    "Local Business Owners": 0.1,
+    "Commuters": -0.3,
+    "Environmentalists": 0.4
+  }
+}

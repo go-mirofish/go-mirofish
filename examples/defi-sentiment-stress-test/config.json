@@ -1,0 +1,27 @@
+{
+  "example_key": "defi-sentiment-stress-test",
+  "title": "De-Fi Market Sentiment Stress-Test",
+  "agent_count": 100,
+  "run_command": "go run ./gateway/cmd/go-mirofish-examples --example defi-sentiment-stress-test --profile medium",
+  "expected_artifacts": ["liquidation_cascade_forecast.json"],
+  "profiles": {
+    "small": {
+      "agent_count": 40,
+      "interaction_count": 80,
+      "task_count": 6,
+      "thresholds": { "startup_warn_ms": 100, "startup_fail_ms": 500, "runtime_warn_ms": 200, "runtime_fail_ms": 1500 }
+    },
+    "medium": {
+      "agent_count": 100,
+      "interaction_count": 200,
+      "task_count": 12,
+      "thresholds": { "startup_warn_ms": 150, "startup_fail_ms": 750, "runtime_warn_ms": 400, "runtime_fail_ms": 2500 }
+    },
+    "stress": {
+      "agent_count": 160,
+      "interaction_count": 320,
+      "task_count": 18,
+      "thresholds": { "startup_warn_ms": 250, "startup_fail_ms": 1000, "runtime_warn_ms": 800, "runtime_fail_ms": 4000 }
+    }
+  }
+}

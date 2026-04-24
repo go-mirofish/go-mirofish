@@ -1,0 +1,34 @@
+[
+  {
+    "name": "The Elderly",
+    "population_weight": 1.1,
+    "scenario_affinities": {
+      "highway": -0.5,
+      "park": 0.8
+    }
+  },
+  {
+    "name": "Local Business Owners",
+    "population_weight": 1.0,
+    "scenario_affinities": {
+      "highway": 0.7,
+      "park": 0.2
+    }
+  },
+  {
+    "name": "Commuters",
+    "population_weight": 1.3,
+    "scenario_affinities": {
+      "highway": 0.9,
+      "park": -0.2
+    }
+  },
+  {
+    "name": "Environmentalists",
+    "population_weight": 0.9,
+    "scenario_affinities": {
+      "highway": -1.1,
+      "park": 1.0
+    }
+  }
+]

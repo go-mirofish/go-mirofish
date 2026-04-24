@@ -1,0 +1,23 @@
+{
+  "block_coalition": [
+    "Commuters"
+  ],
+  "scenario": "Build Park",
+  "scores": {
+    "Commuters": -0.65,
+    "Environmentalists": 1.26,
+    "Local Business Owners": 0.30000000000000004,
+    "The Elderly": 1.2100000000000002
+  },
+  "support_coalition": [
+    "The Elderly",
+    "Local Business Owners",
+    "Environmentalists"
+  ],
+  "unexpected_alignment": {
+    "groups": [
+      "The Elderly",
+      "Commuters"
+    ]
+  }
+}

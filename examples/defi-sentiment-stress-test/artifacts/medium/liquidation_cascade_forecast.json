@@ -1,0 +1,10 @@
+{
+  "agent_count": 100,
+  "cascade_price_region_high": 84.04800000000002,
+  "cascade_price_region_low": 79.152,
+  "example": "De-Fi Market Sentiment Stress-Test",
+  "initial_price": 100,
+  "panic_sell_threshold": 78,
+  "panic_sentiment_level": 0.22,
+  "total_pressure_score": 183.99999999999997
+}

@@ -1,0 +1,19 @@
+{
+  "agent_count": 40,
+  "bottleneck_department": "C-Suite",
+  "confusion_score": 8.56,
+  "example": "Zero-Day Cyber Incident Drill",
+  "external_spread": {
+    "C-Suite": 3.26,
+    "General Public": 2.46,
+    "IT Security": 1.38,
+    "Legal": 2.58
+  },
+  "internal_spread": {
+    "C-Suite": 5.300000000000001,
+    "General Public": 1.8,
+    "IT Security": 2.05,
+    "Legal": 4.3
+  },
+  "recommended_fix": "Route legal approval and public messaging through a single incident commander channel."
+}

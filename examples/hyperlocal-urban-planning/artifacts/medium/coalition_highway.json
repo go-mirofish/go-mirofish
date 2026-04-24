@@ -1,0 +1,23 @@
+{
+  "block_coalition": [
+    "The Elderly",
+    "Environmentalists"
+  ],
+  "scenario": "Build Highway",
+  "scores": {
+    "Commuters": 1.6900000000000002,
+    "Environmentalists": -1.2600000000000002,
+    "Local Business Owners": 0.8999999999999999,
+    "The Elderly": -0.66
+  },
+  "support_coalition": [
+    "Local Business Owners",
+    "Commuters"
+  ],
+  "unexpected_alignment": {
+    "groups": [
+      "Local Business Owners",
+      "The Elderly"
+    ]
+  }
+}
