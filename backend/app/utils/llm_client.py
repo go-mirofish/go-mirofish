@@ -4,7 +4,6 @@
 import json
 import re
 import time
-import random
 from typing import Optional, Dict, Any, List
 from openai import OpenAI, APIConnectionError, APITimeoutError, APIStatusError, InternalServerError, RateLimitError
 
@@ -47,6 +46,9 @@ class LLMUpstreamError(Exception):
 
 
 class LLMClient:
+    MAX_RETRY_ATTEMPTS = 4
+    INITIAL_RETRY_DELAY_SECONDS = 2.0
+    MAX_RETRY_DELAY_SECONDS = 20.0
     
     def __init__(
         self,
@@ -65,6 +67,28 @@ class LLMClient:
             api_key=self.api_key,
             base_url=self.base_url
         )
+
+    @staticmethod
+    def _clean_text_response(content: Any) -> str:
+        """Normalize provider output into a plain string before parsing."""
+        if isinstance(content, str):
+            text = content
+        elif isinstance(content, list):
+            parts: List[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                    parts.append(item["text"])
+            text = "\n".join(part for part in parts if part).strip()
+        elif content is None:
+            text = ""
+        else:
+            text = str(content)
+
+        text = text.replace("\ufeff", "").strip()
+        text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
+        return text
 
     def _extract_upstream_error(self, exc: Exception) -> Optional[LLMUpstreamError]:
         response = getattr(exc, "response", None)
@@ -119,10 +143,10 @@ class LLMClient:
         return None
 
     def _create_completion(self, **kwargs):
-        delay = 2.0
+        delay = self.INITIAL_RETRY_DELAY_SECONDS
         last_exception = None
 
-        for attempt in range(4):
+        for attempt in range(self.MAX_RETRY_ATTEMPTS):
             try:
                 return self.client.chat.completions.create(**kwargs)
             except (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError) as exc:
@@ -145,13 +169,13 @@ class LLMClient:
                         raise upstream_error
                     raise
 
-            if attempt == 3:
+            if attempt == self.MAX_RETRY_ATTEMPTS - 1:
                 upstream_error = self._extract_upstream_error(last_exception)
                 if upstream_error is not None:
                     raise upstream_error
                 raise last_exception
 
-            sleep_for = min(delay, 20.0) * (0.5 + random.random())
+            sleep_for = min(delay, self.MAX_RETRY_DELAY_SECONDS)
             time.sleep(sleep_for)
             delay *= 2.0
 
@@ -184,8 +208,9 @@ class LLMClient:
             kwargs["response_format"] = response_format
         
         response = self._create_completion(**kwargs)
-        content = response.choices[0].message.content
-        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+        content = self._clean_text_response(response.choices[0].message.content)
+        if not content:
+            raise ValueError("LLM returned empty content")
         return content
 
     def _repair_json_text(self, broken_json: str) -> Dict[str, Any]:
@@ -231,15 +256,21 @@ class LLMClient:
             max_tokens=max_tokens,
             response_format={"type": "json_object"}
         )
-        cleaned_response = response.strip()
+        cleaned_response = self._clean_text_response(response)
         cleaned_response = re.sub(r'^```(?:json)?\s*\n?', '', cleaned_response, flags=re.IGNORECASE)
         cleaned_response = re.sub(r'\n?```\s*$', '', cleaned_response)
         cleaned_response = cleaned_response.strip()
+        if not cleaned_response:
+            raise ValueError("LLM returned empty JSON response")
 
         try:
-            return json.loads(cleaned_response)
+            parsed = json.loads(cleaned_response)
         except json.JSONDecodeError:
             try:
-                return self._repair_json_text(cleaned_response)
+                parsed = self._repair_json_text(cleaned_response)
             except Exception:
                 raise ValueError(f"LLM returned invalid JSON: {cleaned_response}")
+
+        if not isinstance(parsed, dict):
+            raise ValueError(f"LLM returned JSON that was not an object: {type(parsed).__name__}")
+        return parsed
