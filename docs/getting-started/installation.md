@@ -1,6 +1,6 @@
 # Installation
 
-For [go.mirofish.ai](https://go.mirofish.ai), from zero to a running stack.
+For the public app ([gomirofish.vercel.app](https://gomirofish.vercel.app); **go.mirofish.ai** pending DNS), from zero to a running stack.
 
 > [!NOTE]
 > **Prerequisites**
@@ -139,4 +139,27 @@ Or run **`npm run build:gateway`** (writes to `gateway/bin/`).
 
 - [Ollama (local LLM)](../configuration/ollama.md)  
 - [OpenAI-compatible providers](../configuration/providers.md)  
-- Deeper **.env** reference on [go.mirofish.ai](https://go.mirofish.ai) as docs expand  
+- Deeper **.env** reference on [gomirofish.vercel.app](https://gomirofish.vercel.app) (and go.mirofish.ai when live) as docs expand  
+
+## Examples and benchmarks
+
+The repo now ships a local-first example runner:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --list
+```
+
+Common commands:
+
+```bash
+go run ./gateway/cmd/go-mirofish-examples --all --smoke-only --profile small
+go run ./gateway/cmd/go-mirofish-examples --all --bench-only --profile medium
+go run ./gateway/cmd/go-mirofish-examples --example product-launch-war-room --profile medium
+go run ./gateway/cmd/go-mirofish-examples --compare docs/bundled-benchmarks/product-launch__small__latest.json,docs/bundled-benchmarks/literary-sim__small__latest.json
+```
+
+Outputs are written under:
+
+- `examples/*/artifacts/<profile>/`
+- `benchmark/results/` (local runs; often gitignored)
+- `docs/bundled-benchmarks/` — committed short-name JSON for the in-app benchmark report (see `docs/bundled-benchmarks/README.md`)
