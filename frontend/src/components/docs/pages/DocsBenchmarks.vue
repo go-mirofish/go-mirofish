@@ -98,14 +98,21 @@ const runs = Object.entries(modules)
     const data = normalizeData(mod) ?? mod
     const rel = toBundledRel(path)
     const { display, search } = parseBundledBenchmarkPath(rel)
-    return { key: path, label: display, search, data }
+    return { key: path, rel, label: display, search, data }
   })
   .filter((r) => r.data && typeof r.data === 'object')
-  .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }))
+  .sort((a, b) => {
+    // Live hybrid stack report first, then alphabetical by label.
+    const aLive = a.rel.includes('live-stack') ? 0 : 1
+    const bLive = b.rel.includes('live-stack') ? 0 : 1
+    if (aLive !== bLive) return aLive - bLive
+    return a.label.localeCompare(b.label, undefined, { numeric: true })
+  })
 
 const runOptions = computed(() => runs.map((r) => ({ key: r.key, label: r.label, search: r.search })))
 
-const selectedKey = ref(runs[0]?.key || '')
+const defaultRunKey = runs.find((r) => r.rel.includes('live-stack'))?.key || runs[0]?.key || ''
+const selectedKey = ref(defaultRunKey)
 const data = computed(() => {
   const row = runs.find((r) => r.key === selectedKey.value)
   return row?.data && typeof row.data === 'object' ? row.data : {}
