@@ -66,4 +66,4 @@ Parts of the go-mirofish stack rely on **structured JSON** from the model in som
 
 - [Installation](../getting-started/installation.md)  
 - [OpenAI-compatible providers](./providers.md)  
-- Cloud LLM and full `.env` reference (expanding on go.mirofish.ai under **Configuration**)
+- Cloud LLM and full `.env` reference (expanding on [gomirofish.vercel.app](https://gomirofish.vercel.app) under **Configuration**; go.mirofish.ai when the custom domain is live)
