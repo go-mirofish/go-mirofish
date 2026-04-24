@@ -48,6 +48,7 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
 			if tt.body != "" {
@@ -246,6 +247,17 @@ func writeActionLog(t *testing.T, path string, items []map[string]any) {
 	}
 }
 
+func pythonExecutableForTest(t *testing.T) string {
+	t.Helper()
+	for _, name := range []string{"python3", "python"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p
+		}
+	}
+	t.Skip("skipping: need python3 or python in PATH to create interview SQLite fixtures")
+	panic("unreachable")
+}
+
 func createInterviewDB(t *testing.T, dbPath string, rows []map[string]any) {
 	t.Helper()
 
@@ -273,7 +285,7 @@ conn.close()
 		t.Fatalf("marshal interview rows: %v", err)
 	}
 
-	cmd := exec.Command("python3", "-c", script, dbPath, string(rawRows))
+	cmd := exec.Command(pythonExecutableForTest(t), "-c", script, dbPath, string(rawRows))
 	if output, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("create interview db: %v\n%s", err, output)
 	}
