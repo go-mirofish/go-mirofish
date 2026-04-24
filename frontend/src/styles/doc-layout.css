@@ -13,7 +13,7 @@
   --doc-accent: #00add8;
   --doc-accent-soft: rgba(0, 173, 216, 0.15);
   --orange: #00add8;
-  --doc-radius: 12px;
+  --doc-radius: 0;
   --doc-font-sans: 'Inter', 'Noto Sans SC', system-ui, sans-serif;
   --doc-font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --doc-topbar-surface: rgba(255, 255, 255, 0.85);
@@ -603,7 +603,7 @@ a.doc-github-stars {
 /* Subtle animated border (MCP-style “spotlight” feel, no React runtime) */
 .doc-playground-shell {
   position: relative;
-  border-radius: calc(var(--doc-radius) + 2px);
+  border-radius: 0;
   padding: 1px;
   background: linear-gradient(
     130deg,
