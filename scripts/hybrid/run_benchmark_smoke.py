@@ -108,6 +108,13 @@ def poll_until(fetcher, *, accepted: set[str], timeout: int, interval: float, la
     raise TimeoutError(f"{label} did not reach {sorted(accepted)} before timeout. last={last_payload}")
 
 
+def first_present(*values):
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:3000", help="Gateway base URL")
@@ -236,18 +243,52 @@ def main() -> int:
         headers={"Content-Type": "application/json"},
         timeout=args.request_timeout,
     )
-    report_id = report_generate["data"]["report_id"]
-    report_task_id = report_generate["data"]["task_id"]
-    report_status = poll_until(
-        lambda: request_json(
-            f"{base_url}/api/report/generate/status?task_id={urllib.parse.quote(report_task_id)}&simulation_id={urllib.parse.quote(simulation_id)}",
+    report_id = report_generate["data"].get("report_id")
+    report_task_id = report_generate["data"].get("task_id")
+
+    if report_generate["data"].get("already_generated"):
+        report_status = request_json(
+            f"{base_url}/api/report/generate/status?report_id={urllib.parse.quote(report_id)}",
             timeout=args.request_timeout,
-        ),
-        accepted={"completed"},
-        timeout=args.timeout_seconds,
-        interval=5,
-        label="report generation",
+        )
+    elif report_task_id:
+        report_status = poll_until(
+            lambda: request_json(
+                f"{base_url}/api/report/generate/status?task_id={urllib.parse.quote(report_task_id)}&simulation_id={urllib.parse.quote(simulation_id)}",
+                timeout=args.request_timeout,
+            ),
+            accepted={"completed"},
+            timeout=args.timeout_seconds,
+            interval=5,
+            label="report generation",
+        )
+    elif report_id:
+        report_status = poll_until(
+            lambda: request_json(
+                f"{base_url}/api/report/generate/status?report_id={urllib.parse.quote(report_id)}",
+                timeout=args.request_timeout,
+            ),
+            accepted={"completed"},
+            timeout=args.timeout_seconds,
+            interval=5,
+            label="report generation",
+        )
+    else:
+        raise RuntimeError(
+            f"report generation returned neither task_id nor report_id: {json.dumps(report_generate, ensure_ascii=False)}"
+        )
+
+    report_status_data = report_status.get("data", {})
+    report_id = first_present(
+        report_id,
+        report_status_data.get("report_id"),
+        (report_status_data.get("result") or {}).get("report_id"),
+        (report_status_data.get("metadata") or {}).get("report_id"),
     )
+    if not report_id:
+        raise RuntimeError(
+            f"report generation completed without report_id: {json.dumps(report_status, ensure_ascii=False)}"
+        )
 
     report = request_json(f"{base_url}/api/report/{report_id}", timeout=args.request_timeout)
 
@@ -257,8 +298,13 @@ def main() -> int:
         "simulation_id": simulation_id,
         "report_id": report_id,
         "simulation_status": simulation_status["data"].get("runner_status"),
-        "report_status": report_status["data"].get("status"),
-        "report_non_empty": bool(report.get("data", {}).get("content")),
+        "report_status": report_status_data.get("status"),
+        "report_non_empty": bool(
+            first_present(
+                report.get("data", {}).get("markdown_content"),
+                report.get("data", {}).get("content"),
+            )
+        ),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0
