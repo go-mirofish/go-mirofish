@@ -1,170 +1,368 @@
 <template>
-  <div class="home-container doc-site docs-view">
-    <header class="doc-topbar">
-      <div class="doc-topbar-inner">
-        <router-link to="/" class="doc-topbar-brand doc-topbar-brand-link">go-mirofish</router-link>
-        <span class="doc-topbar-meta">{{ $t('docs.topbarMeta') }}</span>
-        <div class="doc-topbar-actions">
-          <router-link to="/docs" class="doc-topbar-nav-link doc-topbar-nav-link--active">
-            {{ $t('nav.docs') }}
-          </router-link>
-          <ThemeToggle />
-          <LanguageSwitcher />
-          <a
-            href="https://github.com/go-mirofish/go-mirofish"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {{ $t('nav.visitGithub') }} ↗
-          </a>
-        </div>
+  <DocsLayout :title="pageTitle" :hasToc="Boolean(tocHeadings.length)">
+    <template #sidebar>
+      <DocsSidebar :groups="DOCS_GROUPS" :activePath="activePath" />
+    </template>
+
+    <template v-if="tocHeadings.length" #toc>
+      <DocsToc :headings="tocHeadings" :activeId="activeTocId" />
+    </template>
+
+    <template #default>
+      <div class="page-head">
+        <div class="page-title">{{ pageTitle }}</div>
+        <PageActionsDropdown @scroll-playground="goToPlayground" />
       </div>
-    </header>
 
-    <div class="docs-layout">
-      <aside class="docs-sidebar" :aria-label="$t('docs.sidebarAria')">
-        <nav class="docs-nav">
-          <p class="docs-nav-group">{{ $t('docs.navGroupStart') }}</p>
-          <router-link class="docs-nav-item" to="/docs" :class="{ active: isOverview }">
-            {{ $t('docs.navOverview') }}
-          </router-link>
-          <router-link class="docs-nav-item" to="/docs/installation" active-class="active">
-            {{ $t('docs.navInstallation') }}
-          </router-link>
-
-          <p class="docs-nav-group">{{ $t('docs.navGroupConfig') }}</p>
-          <router-link class="docs-nav-item" to="/docs/ollama" active-class="active">
-            {{ $t('docs.navOllama') }}
-          </router-link>
-          <router-link class="docs-nav-item" to="/docs/providers" active-class="active">
-            {{ $t('docs.navProviders') }}
-          </router-link>
-
-          <p class="docs-nav-group">{{ $t('docs.navGroupContrib') }}</p>
-          <router-link class="docs-nav-item" to="/docs/contributing" active-class="active">
-            {{ $t('docs.navContributing') }}
-          </router-link>
-        </nav>
-      </aside>
-
-      <div class="docs-main">
-        <div class="docs-toolbar">
-          <h1 class="docs-page-title">{{ pageTitle }}</h1>
-          <PageActionsDropdown @scroll-playground="goToPlayground" />
+      <section v-if="entry?.type === 'overview'" class="overview doc-main">
+        <div class="overview-logo-wrap">
+          <img class="overview-logo" :src="overviewLogoSrc" :alt="$t('docs.overviewLogoAlt')" decoding="async" />
         </div>
+        <DocsArchitectureDiagram />
+        <div class="overview-grid">
+          <div class="overview-card">
+            <div class="kicker">{{ $t('docs.overviewWhatTitle') }}</div>
+            <div class="body">{{ $t('docs.overviewWhatBody') }}</div>
+          </div>
+          <div class="overview-card">
+            <div class="kicker">{{ $t('docs.overviewStackTitle') }}</div>
+            <ul class="list">
+              <li>{{ $t('docs.overviewStackItem1') }}</li>
+              <li>{{ $t('docs.overviewStackItem2') }}</li>
+              <li>{{ $t('docs.overviewStackItem3') }}</li>
+              <li>{{ $t('docs.overviewStackItem4') }}</li>
+              <li>{{ $t('docs.overviewStackItem5') }}</li>
+            </ul>
+          </div>
+        </div>
+        <div class="overview-links">
+          <router-link class="pill" to="/docs/installation">{{ $t('docs.overviewCtaInstall') }} →</router-link>
+          <router-link class="pill" to="/docs/benchmark">{{ $t('docs.overviewCtaBenchmark') }} →</router-link>
+        </div>
+      </section>
 
-        <article v-if="isOverview" class="docs-article">
-          <img
-            class="docs-overview-logo"
-            :src="overviewLogoSrc"
-            :alt="$t('docs.overviewLogoAlt')"
-            decoding="async"
-          />
-          <DocsArchitectureDiagram />
-          <h2 class="docs-h2">{{ $t('docs.overviewWhatTitle') }}</h2>
-          <p class="docs-p">{{ $t('docs.overviewWhatBody') }}</p>
-          <h2 class="docs-h2">{{ $t('docs.overviewStackTitle') }}</h2>
-          <ul class="docs-list">
-            <li>{{ $t('docs.overviewStackItem1') }}</li>
-            <li>{{ $t('docs.overviewStackItem2') }}</li>
-            <li>{{ $t('docs.overviewStackItem3') }}</li>
-            <li>{{ $t('docs.overviewStackItem4') }}</li>
-          </ul>
-          <p class="docs-p">
-            <router-link class="docs-inline-link" to="/docs/installation">
-              {{ $t('docs.overviewCtaInstall') }} →
-            </router-link>
-          </p>
-        </article>
-
-        <article v-else class="docs-article docs-article--md" v-html="renderedHtml" />
+      <div
+        v-else
+        class="doc-page"
+        :class="{
+          'doc-page--prose': entry?.type === 'markdown',
+          'doc-page--wide': entry?.componentName === 'DocsBenchmarks' || entry?.componentName === 'DocsShowcase',
+        }"
+      >
+        <DocsBenchmarks v-if="entry?.componentName === 'DocsBenchmarks'" />
+        <DocsShowcase v-else-if="entry?.componentName === 'DocsShowcase'" />
+        <DocsContributing v-else-if="entry?.componentName === 'DocsContributing'" />
+        <DocsMarkdown v-else :source="markdownSource" />
       </div>
-    </div>
-    <SiteFooter />
-  </div>
+    </template>
+
+    <template #footer-left>
+      <span v-if="sourcePathDisplay">{{ $t('docs.source') }}: <code>{{ sourcePathDisplay }}</code></span>
+    </template>
+    <template #footer-right>
+      <a v-if="editUrl" class="edit" :href="editUrl" target="_blank" rel="noopener noreferrer">
+        {{ $t('docs.editOnGithub') }} ↗
+      </a>
+    </template>
+  </DocsLayout>
 </template>
 
 <script setup>
-import { marked } from 'marked'
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import LanguageSwitcher from '../components/LanguageSwitcher.vue'
-import ThemeToggle from '../components/ThemeToggle.vue'
-import SiteFooter from '../components/SiteFooter.vue'
 import PageActionsDropdown from '../components/PageActions/PageActionsDropdown.vue'
 import DocsArchitectureDiagram from '../components/DocsArchitectureDiagram.vue'
 import overviewLogoSrc from '../assets/logo/go-mirofish-thumbnail.png'
 
-import installationSource from '@docs/getting-started/installation.md?raw'
-import ollamaSource from '@docs/configuration/ollama.md?raw'
-import providersSource from '@docs/configuration/providers.md?raw'
-import contributingSource from '@docs/contributing/README.md?raw'
+import DocsLayout from '../components/docs/DocsLayout.vue'
+import DocsSidebar from '../components/docs/DocsSidebar.vue'
+import DocsToc from '../components/docs/DocsToc.vue'
+import DocsMarkdown from '../components/docs/DocsMarkdown.vue'
+import DocsBenchmarks from '../components/docs/pages/DocsBenchmarks.vue'
+import DocsShowcase from '../components/docs/pages/DocsShowcase.vue'
+import DocsContributing from '../components/docs/pages/DocsContributing.vue'
+
+import { DOCS_GROUPS, findEntryByPath, toEditUrl } from '../docs/manifest'
+import { docSlugify } from '../components/docs/markdown/slugify.js'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
-const rawByKey = {
-  installation: installationSource,
-  ollama: ollamaSource,
-  providers: providersSource,
-  contributing: contributingSource,
-}
-
-const validSections = new Set(['installation', 'ollama', 'providers', 'contributing'])
-
-const section = computed(() => {
-  if (route.name === 'Docs') return 'overview'
-  const s = route.params.section
-  if (typeof s === 'string' && validSections.has(s)) return s
-  return 'overview'
-})
-
-const isOverview = computed(() => route.name === 'Docs')
+const activePath = computed(() => (route.name === 'Docs' ? '/docs' : `/docs/${route.params.section}`))
+const entry = computed(() => findEntryByPath(activePath.value))
 
 const pageTitle = computed(() => {
-  if (section.value === 'overview') return t('docs.titleOverview')
-  if (section.value === 'installation') return t('docs.titleInstallation')
-  if (section.value === 'ollama') return t('docs.titleOllama')
-  if (section.value === 'providers') return t('docs.titleProviders')
-  if (section.value === 'contributing') return t('docs.titleContributing')
+  if (entry.value?.key === 'overview') return t('docs.titleOverview')
+  if (entry.value?.key === 'installation') return t('docs.titleInstallation')
+  if (entry.value?.key === 'ollama') return t('docs.titleOllama')
+  if (entry.value?.key === 'providers') return t('docs.titleProviders')
+  if (entry.value?.key === 'benchmark') return t('docs.titleBenchmark')
+  if (entry.value?.key === 'showcase') return t('docs.titleShowcase')
+  if (entry.value?.key === 'contributing') return t('docs.titleContributing')
   return t('docs.titleDocs')
 })
 
-const renderedHtml = ref('')
+// Load markdown sources via Vite virtual import mapping.
+const mdModules = import.meta.glob('../../../docs/**/*.md', { as: 'raw', eager: true })
+const markdownSource = computed(() => {
+  const sp = entry.value?.sourcePath
+  if (!sp) return ''
+  const key = `../../../${sp}`
+  return mdModules[key] || ''
+})
 
-/**
- * Marked has no GitHub "alert" blocks; it emits [!NOTE] as plain text in blockquotes. Promote to asides
- * and strip the label line so the UI matches common docs renderers.
- */
-function promoteGitHubAlertBlockquotes(html) {
-  return html.replace(
-    /<blockquote>\s*<p>\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:<br\s*\/?>|\s*<\/p>\s*<p>)([\s\S]*?)<\/blockquote>/gi,
-    (_, kind, body) => {
-      const c = String(kind).toLowerCase()
-      return `<aside class="doc-alert doc-alert--${c}">${body}</aside>`
-    }
-  )
+const activeTocId = ref('')
+let tocObserver = null
+
+function extractTocFromMarkdown(source) {
+  const headings = []
+  const lines = String(source || '').split('\n')
+  for (const line of lines) {
+    const m = line.match(/^(#{2,4})\s+(.+)$/)
+    if (!m) continue
+    const level = m[1].length
+    const text = m[2].replace(/\s+#.*$/, '').trim()
+    const id = docSlugify(text)
+    headings.push({ level, text, id })
+  }
+  return headings
 }
 
-function renderForSection(s) {
-  if (s === 'overview' || !rawByKey[s]) {
-    renderedHtml.value = ''
+const tocHeadings = computed(() => {
+  const e = entry.value
+  if (!e) return []
+  if (e.componentName === 'DocsBenchmarks') {
+    return [
+      { level: 2, text: t('docs.bench.tocSummary'), id: 'doc-bench-hero' },
+      { level: 2, text: t('docs.bench.tocMetrics'), id: 'doc-bench-metrics' },
+      { level: 2, text: t('docs.bench.tocCharts'), id: 'doc-bench-charts' },
+      { level: 2, text: t('docs.bench.tocGrid'), id: 'doc-bench-grid' },
+    ]
+  }
+  if (e.componentName === 'DocsShowcase') {
+    return [
+      { level: 2, text: t('docs.showcase.tocHero'), id: 'doc-show-hero' },
+      { level: 2, text: t('docs.showcase.tocHighlights'), id: 'doc-show-highlights' },
+      { level: 2, text: t('docs.showcase.tocShots'), id: 'doc-show-shots' },
+      { level: 2, text: t('docs.showcase.tocFaq'), id: 'doc-show-faq' },
+    ]
+  }
+  if (e.componentName === 'DocsContributing') {
+    return [
+      { level: 2, text: t('docs.contrib.tocStart'), id: 'doc-contrib-hero' },
+      { level: 2, text: t('docs.contrib.tocWork'), id: 'doc-contrib-work' },
+      { level: 2, text: t('docs.contrib.tocGuidelines'), id: 'doc-contrib-guides' },
+    ]
+  }
+  if (e.type === 'markdown') {
+    return extractTocFromMarkdown(markdownSource.value)
+  }
+  return []
+})
+
+async function setupScrollSpy() {
+  if (typeof IntersectionObserver === 'undefined') return
+  if (tocObserver) {
+    tocObserver.disconnect()
+    tocObserver = null
+  }
+  await nextTick()
+  const ids = tocHeadings.value.map((h) => h.id)
+  const els = ids.map((id) => document.getElementById(id)).filter(Boolean)
+  if (!els.length) {
+    activeTocId.value = ''
     return
   }
-  marked.setOptions({ gfm: true, breaks: true })
-  const raw = rawByKey[s]
-  renderedHtml.value = promoteGitHubAlertBlockquotes(marked.parse(raw))
+  const obs = new IntersectionObserver(
+    (entries) => {
+      const visible = entries.filter((e) => e.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)
+      if (visible[0]?.target?.id) activeTocId.value = visible[0].target.id
+    },
+    { root: null, rootMargin: '0px 0px -70% 0px', threshold: [0.1, 0.2, 0.4, 0.6, 0.8] }
+  )
+  els.forEach((el) => obs.observe(el))
+  tocObserver = obs
 }
 
 watch(
-  () => section.value,
-  (s) => renderForSection(s),
-  { immediate: true }
+  [() => tocHeadings.value, () => entry.value?.path, () => markdownSource.value],
+  () => {
+    void setupScrollSpy()
+  },
+  { immediate: true, flush: 'post' }
 )
+
+onUnmounted(() => {
+  if (tocObserver) {
+    tocObserver.disconnect()
+    tocObserver = null
+  }
+})
+
+const editUrl = computed(() => toEditUrl(entry.value?.sourcePath))
+
+const sourcePathDisplay = computed(() => {
+  const sp = entry.value?.sourcePath
+  if (typeof sp === 'string' && sp) return sp
+  return ''
+})
 
 function goToPlayground() {
   router.push({ path: '/', hash: '#playground' })
 }
 </script>
+
+<style scoped>
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  margin-bottom: clamp(8px, 1.2vw, 14px);
+}
+
+.page-title {
+  font-size: clamp(1.1rem, 2.2vw, 1.375rem);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.doc-main,
+.doc-page {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.doc-page {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 1.5vw, 20px);
+  max-width: min(100%, 56rem);
+  margin-left: auto;
+  margin-right: auto;
+  /* Main column already has --doc-main-pad-x on .content; avoid double horizontal inset. */
+  padding: 0;
+  min-width: 0;
+  overflow: visible;
+}
+
+.doc-page--prose {
+  max-width: min(100%, 50rem);
+}
+
+.doc-page--wide {
+  max-width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.overview-logo-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 12px 0 8px;
+}
+
+.overview-logo {
+  width: min(300px, 90vw);
+  max-height: 200px;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  opacity: 1;
+  filter: drop-shadow(0 2px 12px color-mix(in srgb, var(--doc-text) 14%, transparent));
+}
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.overview-card {
+  border: 1px solid var(--doc-border);
+  background: var(--doc-surface);
+  border-radius: var(--doc-radius);
+  padding: 16px;
+  box-shadow: var(--doc-shadow-soft);
+}
+
+.kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--doc-muted);
+  margin-bottom: 8px;
+}
+
+.body {
+  color: var(--doc-text);
+  line-height: 1.7;
+}
+
+.list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--doc-text);
+  line-height: 1.7;
+}
+
+.overview-links {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--doc-border);
+  padding: 10px 12px;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--doc-surface) 70%, transparent);
+  text-decoration: none;
+  font-weight: 800;
+  color: var(--doc-text);
+}
+.pill:hover {
+  border-color: color-mix(in srgb, var(--doc-accent) 32%, var(--doc-border));
+}
+
+.edit {
+  color: var(--doc-muted);
+  text-decoration: none;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.edit:hover { color: var(--doc-text); }
+
+@media (max-width: 860px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .page-title {
+    line-height: 1.2;
+  }
+}
+</style>
