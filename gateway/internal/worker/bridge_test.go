@@ -13,6 +13,20 @@ import (
 	"time"
 )
 
+func posixShellForTest(t *testing.T) string {
+	t.Helper()
+	for _, name := range []string{"sh", "bash"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p
+		}
+	}
+	if runtime.GOOS != "windows" {
+		return "/bin/sh"
+	}
+	t.Skip("need sh or bash in PATH (e.g. Git for Windows) for LocalPythonBridge tests")
+	panic("unreachable")
+}
+
 func assertWorkerErrorKind(t *testing.T, err error, want error) {
 	t.Helper()
 
@@ -101,7 +115,7 @@ func TestLocalPythonBridgeStartSimulation(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		tmpDir := t.TempDir()
 		simID := "sim-start"
-		bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), "/bin/sh")
+		bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), posixShellForTest(t))
 
 		writeTestJSON(t, filepath.Join(tmpDir, simID, "simulation_config.json"), map[string]any{
 			"time_config": map[string]any{"total_simulation_hours": 24},
@@ -195,9 +209,10 @@ sleep 1
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
-			bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), "/bin/sh")
+			bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), posixShellForTest(t))
 			if tc.setup != nil {
 				tc.setup(t, bridge)
 			}
@@ -211,7 +226,7 @@ sleep 1
 func TestLocalPythonBridgeStopSimulation(t *testing.T) {
 	t.Run("returns state without pid", func(t *testing.T) {
 		tmpDir := t.TempDir()
-		bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), "/bin/sh")
+		bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), posixShellForTest(t))
 		writeTestJSON(t, filepath.Join(tmpDir, "sim-stop", "run_state.json"), map[string]any{
 			"simulation_id": "sim-stop",
 			"runner_status": "stopped",
@@ -232,8 +247,9 @@ func TestLocalPythonBridgeStopSimulation(t *testing.T) {
 		}
 
 		tmpDir := t.TempDir()
-		bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), "/bin/sh")
-		cmd := exec.Command("/bin/sh", "-c", "trap 'exit 0' TERM; while true; do sleep 1; done")
+		shell := posixShellForTest(t)
+		bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), shell)
+		cmd := exec.Command(shell, "-c", "trap 'exit 0' TERM; while true; do sleep 1; done")
 		if err := cmd.Start(); err != nil {
 			t.Fatalf("start test process: %v", err)
 		}
@@ -330,10 +346,11 @@ func TestLocalPythonBridgeInterview(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 			simDir := filepath.Join(tmpDir, "sim-interview")
-			bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), "/bin/sh")
+			bridge := NewLocalPythonBridge(tmpDir, filepath.Join(tmpDir, "scripts"), posixShellForTest(t))
 			tc.setup(t, simDir)
 
 			result, err := bridge.Interview(context.Background(), InterviewRequest{
