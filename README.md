@@ -16,7 +16,7 @@
 
 Upload documents, describe what you want to predict, and get a full simulation report **on your laptop**.
 
-**Public preview (Vercel):** [gomirofish.vercel.app](https://gomirofish.vercel.app) — custom domain **go.mirofish.ai** is pending (subdomain access with the domain holder is still in progress).
+**Public preview (Vercel):** [gomirofish.vercel.app](https://gomirofish.vercel.app). Custom domain **go.mirofish.ai** is pending (subdomain access with the domain holder is still in progress).
 
 > [!NOTE]
 > **go-mirofish** is a lightweight fork of [MiroFish](https://github.com/666ghj/MiroFish). The AI features and five-step workflow are the same; **only the web and runtime layer** is optimized for local-first, lower-overhead deployment.
@@ -141,44 +141,33 @@ What the example suite proves:
 Read the evidence in detail:
 
 - [Benchmark report](./docs/hybrid/benchmark-report.md)
-- [Go parity matrix](./docs/hybrid/go-parity-matrix.md)
 - [Go migration plan](./docs/hybrid/go-migration-plan.md)
-- [Showcase policy](./docs/hybrid/showcase.md)
-- `benchmark/results/examples-benchmark-suite.json` (local capture; path may be gitignored)
-- `benchmark/results/smoke/latest.json`
-- `docs/bundled-benchmarks/*.json` — short names for the in-app benchmark report (committed)
 
 ## Examples & Benchmarks
 
-List examples:
+All commands use the example runner: `go run ./gateway/cmd/go-mirofish-examples` (from the repo root).
 
-```bash
-go run ./gateway/cmd/go-mirofish-examples --list
-```
+### Examples (single run & discovery)
 
-Run one example:
+| Task | Command |
+| --- | --- |
+| List example keys | `go run ./gateway/cmd/go-mirofish-examples --list` |
+| Run one example | `go run ./gateway/cmd/go-mirofish-examples --example product-launch-war-room --profile medium` |
 
-```bash
-go run ./gateway/cmd/go-mirofish-examples --example product-launch-war-room --profile medium
-```
+### Validation & benchmark (all examples)
 
-Run smoke validation for all examples:
+| Category | Task | Command |
+| --- | --- | --- |
+| Validation | Smoke all examples (`small` profile) | `go run ./gateway/cmd/go-mirofish-examples --all --smoke-only --profile small` |
+| Benchmarks | Run the benchmark suite (`medium` profile) | `go run ./gateway/cmd/go-mirofish-examples --all --bench-only --profile medium` |
 
-```bash
-go run ./gateway/cmd/go-mirofish-examples --all --smoke-only --profile small
-```
+### Compare runs
 
-Run the benchmark suite:
+| Task | Command |
+| --- | --- |
+| Compare two captured JSON files (comma-separated paths) | `go run ./gateway/cmd/go-mirofish-examples --compare docs/bundled-benchmarks/product-launch__small__latest.json,docs/bundled-benchmarks/literary-sim__small__latest.json` |
 
-```bash
-go run ./gateway/cmd/go-mirofish-examples --all --bench-only --profile medium
-```
-
-Compare two benchmark runs:
-
-```bash
-go run ./gateway/cmd/go-mirofish-examples --compare docs/bundled-benchmarks/product-launch__small__latest.json,docs/bundled-benchmarks/literary-sim__small__latest.json
-```
+You can pass any two benchmark JSON paths (including under `benchmark/results/` on your machine).
 
 ## 🌐 Live Demo
 
