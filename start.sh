@@ -18,6 +18,10 @@ is_windows_shell() {
   esac
 }
 
+is_wsl() {
+  grep -qi microsoft /proc/version 2>/dev/null
+}
+
 default_gateway_bin() {
   if is_windows_shell; then
     printf '%s\n' "$ROOT_DIR/gateway/bin/go-mirofish-gateway.exe"
@@ -67,10 +71,10 @@ ensure_backend_python() {
   if [[ -x "$BACKEND_VENV/bin/python" ]]; then
     python_path="$BACKEND_VENV/bin/python"
     pip_path="$BACKEND_VENV/bin/pip"
-  elif [[ -x "$BACKEND_VENV/Scripts/python.exe" ]]; then
+  elif ! is_wsl && [[ -x "$BACKEND_VENV/Scripts/python.exe" ]]; then
     python_path="$BACKEND_VENV/Scripts/python.exe"
     pip_path="$BACKEND_VENV/Scripts/pip.exe"
-  elif [[ -x "$BACKEND_VENV/Scripts/python" ]]; then
+  elif ! is_wsl && [[ -x "$BACKEND_VENV/Scripts/python" ]]; then
     python_path="$BACKEND_VENV/Scripts/python"
     pip_path="$BACKEND_VENV/Scripts/pip"
   fi
@@ -99,16 +103,20 @@ ensure_backend_python() {
   if [[ -x "$BACKEND_VENV/bin/python" ]]; then
     python_path="$BACKEND_VENV/bin/python"
     pip_path="$BACKEND_VENV/bin/pip"
-  elif [[ -x "$BACKEND_VENV/Scripts/python.exe" ]]; then
+  elif ! is_wsl && [[ -x "$BACKEND_VENV/Scripts/python.exe" ]]; then
     python_path="$BACKEND_VENV/Scripts/python.exe"
     pip_path="$BACKEND_VENV/Scripts/pip.exe"
-  elif [[ -x "$BACKEND_VENV/Scripts/python" ]]; then
+  elif ! is_wsl && [[ -x "$BACKEND_VENV/Scripts/python" ]]; then
     python_path="$BACKEND_VENV/Scripts/python"
     pip_path="$BACKEND_VENV/Scripts/pip"
   fi
 
   if [[ -z "$python_path" || -z "$pip_path" ]]; then
-    echo "error: failed to locate backend virtualenv executables in $BACKEND_VENV" >&2
+    if is_wsl && [[ -x "$BACKEND_VENV/Scripts/python.exe" ]]; then
+      echo "error: backend/.venv contains a Windows interpreter, but this shell is WSL/Linux. Delete backend/.venv and run npm run setup:backend to recreate a Linux venv." >&2
+    else
+      echo "error: failed to locate backend virtualenv executables in $BACKEND_VENV" >&2
+    fi
     exit 1
   fi
 
