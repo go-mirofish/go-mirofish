@@ -1818,10 +1818,11 @@ watch(() => props.simulationId, (newId) => {
   padding: 12px 16px 8px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--doc-muted);
+  color: var(--doc-text);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--doc-code-bg);
+  background: color-mix(in srgb, var(--doc-upload-surface) 85%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--doc-border) 70%, transparent);
 }
 
 .dropdown-item {
