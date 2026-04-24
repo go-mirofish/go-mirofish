@@ -1,0 +1,42 @@
+{
+  "example_key": "zero-day-incident-drill",
+  "title": "Zero-Day Cyber Incident Drill",
+  "profile": "small",
+  "config_name": "config.json",
+  "agent_count": 20,
+  "interaction_count": 30,
+  "task_count": 4,
+  "startup_latency_ms": 1.0584,
+  "total_runtime_ms": 10.2454,
+  "artifact_count": 1,
+  "artifact_success": true,
+  "deterministic_replay": true,
+  "memory_alloc_bytes": 29056,
+  "local_only": true,
+  "environment": {
+    "timestamp": "2026-04-24T17:05:06Z",
+    "git_commit": "9122c5d",
+    "hostname": "local-host",
+    "goos": "windows",
+    "goarch": "amd64",
+    "cpu_count": 16
+  },
+  "thresholds": {
+    "startup_warn_ms": 100,
+    "startup_fail_ms": 500,
+    "runtime_warn_ms": 200,
+    "runtime_fail_ms": 1500
+  },
+  "evaluation": {
+    "status": "pass",
+    "warnings": null,
+    "failures": null
+  },
+  "artifacts": {
+    "incident_report.json": "C:/Users/JUSTIN~1/AppData/Local/Temp/TestRunAllExamplesAndBenchmarkszero-day-incident-drill3833372774/003/zero-day-incident-drill/benchmark/incident_report.json"
+  },
+  "artifact_hashes": {
+    "incident_report.json": "74526f806958c9d09fb60bf457ac4bd0d1a591d45757976be3c2fa2d89109a3d"
+  },
+  "completed_at": "2026-04-24T17:05:06Z"
+}
