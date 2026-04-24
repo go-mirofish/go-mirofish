@@ -51,11 +51,6 @@ def create_app(config_class=Config):
         logger.debug(f"Response: {response.status_code}")
         return response
     
-    from .api import graph_bp, simulation_bp, report_bp
-    app.register_blueprint(graph_bp, url_prefix='/api/graph')
-    app.register_blueprint(simulation_bp, url_prefix='/api/simulation')
-    app.register_blueprint(report_bp, url_prefix='/api/report')
-    
     @app.route('/health')
     def health():
         return {'status': 'ok', 'service': 'go-mirofish-backend'}
