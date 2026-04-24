@@ -2,6 +2,10 @@
 
 These files power the **Benchmarks** page in the app. They use **short slugs** so runs are easy to spot in the searchable run picker.
 
+## Live stack (default in app)
+
+- `live-stack__hybrid__latest.json` — shipped **live hybrid stack** style report (health, `proof`, stress, `benchmark.summary`). This is the default selection in the Benchmarks page. Replace it with output from `scripts/hybrid/runtime_sprint.py` (`--export-live` / `v0.1.0-live-benchmark.json`) when you want the UI to mirror a real local capture.
+
 ## Filename pattern
 
 ```text
