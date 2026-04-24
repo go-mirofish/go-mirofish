@@ -11,10 +11,30 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 var ErrSimulationNotFound = errors.New("simulation not found")
+
+var (
+	pythonOnPathOnce sync.Once
+	pythonOnPath     string
+)
+
+// pythonForExec returns python3 or python from PATH (Windows often has only "python").
+func pythonForExec() string {
+	pythonOnPathOnce.Do(func() {
+		for _, name := range []string{"python3", "python"} {
+			if p, err := exec.LookPath(name); err == nil {
+				pythonOnPath = p
+				return
+			}
+		}
+		pythonOnPath = "python3"
+	})
+	return pythonOnPath
+}
 
 type Store struct {
 	SimulationsDir string
@@ -300,7 +320,7 @@ except Exception:
 		agentArg = strconv.Itoa(*agentID)
 	}
 
-	cmd := exec.Command("python3", "-c", pyCode, dbPath, platform, strconv.Itoa(limit), agentArg)
+	cmd := exec.Command(pythonForExec(), "-c", pyCode, dbPath, platform, strconv.Itoa(limit), agentArg)
 	raw, err := cmd.Output()
 	if err != nil {
 		return nil, err
