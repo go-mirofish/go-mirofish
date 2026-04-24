@@ -25,12 +25,33 @@ The rule is simple:
 - identical internal class/module structure
 - identical logs unless user-facing or benchmark-relevant
 
+## How to read benchmark evidence against this matrix
+
+Use the benchmark report as the execution proof for this matrix.
+
+Interpret the captured run in this order:
+
+1. stack proof
+2. route and lifecycle proof
+3. artifact proof
+4. artifact quality proof
+
+That ordering matters because a run can prove parity without proving every output is high quality.
+
+Example:
+
+- a run with `project_id`, `graph_id`, `simulation_id`, and `report_id` proves the major workflow stages executed
+- a run with `report_status=completed` proves report lifecycle parity
+- a run with `report_non_empty=false` means the workflow completed but the artifact quality still needs follow-up
+
+Do not collapse those into one binary claim.
+
 ## Module ownership and migration priority
 
 | Area | Current owner | Target owner | Priority | Parity risk |
 | --- | --- | --- | --- | --- |
 | Gateway / route aliases | Go | Go | done | low |
-| Public API surface | Python Flask | Go | high | high |
+| Public API surface | Go | Go | done | low |
 | LLM provider client | Python | Go | high | medium |
 | Ontology generation | Python | Go | high | high |
 | Simulation config generation | Python | Go | high | medium |
@@ -170,3 +191,19 @@ You can claim “mostly migrated to Go” only when:
 - the benchmark reaches the same major phases under the same external conditions
 
 That is the 70-80% Go state.
+
+## Current measured state from the latest benchmark report
+
+The latest captured first-party benchmark currently proves:
+
+- Go gateway health is stable during the measured run
+- Python backend health is stable during the measured run
+- ontology, graph build, simulation, and report generation can complete under the hybrid stack
+- the latest run completes with a non-empty report artifact
+- the example suite runner completes all five local-first templates and writes deterministic artifacts for each
+
+So the current state is:
+
+- parity proof: strong for the measured workflow stages
+- migration proof: strong for the Go public control plane path
+- content-quality proof: strong for the currently benchmarked stack and example suite
