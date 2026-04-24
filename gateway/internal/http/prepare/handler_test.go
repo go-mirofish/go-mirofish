@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	apphttp "github.com/go-mirofish/go-mirofish/gateway/internal/http/app"
 	intprovider "github.com/go-mirofish/go-mirofish/gateway/internal/provider"
@@ -81,8 +82,6 @@ func TestHandleGenerateProfilesDeterministicAndLLM(t *testing.T) {
 }
 
 func TestHandlePrepareValidationAndAccepted(t *testing.T) {
-	root := t.TempDir()
-	store := localfs.New(filepath.Join(root, "projects"), filepath.Join(root, "reports"), filepath.Join(root, "tasks"), filepath.Join(root, "sims"), filepath.Join(root, "scripts"))
 	graph := graphStub{data: map[string]any{
 		"graph_id": "graph-1",
 		"nodes": []map[string]any{
@@ -90,21 +89,11 @@ func TestHandlePrepareValidationAndAccepted(t *testing.T) {
 		},
 		"edges": []map[string]any{},
 	}}
-	handler := NewHandler(store, graph, apphttp.WriteJSON)
-
-	project := map[string]any{
-		"project_id":             "proj-1",
-		"graph_id":               "graph-1",
-		"simulation_requirement": "Test simulation",
-	}
-	if err := store.WriteProject("proj-1", project); err != nil {
-		t.Fatalf("WriteProject: %v", err)
-	}
-	if err := store.WriteSimulation("sim-1", map[string]any{"simulation_id": "sim-1", "project_id": "proj-1", "graph_id": "graph-1", "status": "created"}); err != nil {
-		t.Fatalf("WriteSimulation: %v", err)
-	}
 
 	t.Run("validation failure", func(t *testing.T) {
+		root := t.TempDir()
+		store := localfs.New(filepath.Join(root, "projects"), filepath.Join(root, "reports"), filepath.Join(root, "tasks"), filepath.Join(root, "sims"), filepath.Join(root, "scripts"))
+		handler := NewHandler(store, graph, apphttp.WriteJSON)
 		req := httptest.NewRequest(http.MethodPost, "/api/simulation/prepare", bytes.NewBufferString(`{}`))
 		rec := httptest.NewRecorder()
 		handler.HandlePrepare(rec, req)
@@ -114,6 +103,20 @@ func TestHandlePrepareValidationAndAccepted(t *testing.T) {
 	})
 
 	t.Run("accepted", func(t *testing.T) {
+		root := t.TempDir()
+		store := localfs.New(filepath.Join(root, "projects"), filepath.Join(root, "reports"), filepath.Join(root, "tasks"), filepath.Join(root, "sims"), filepath.Join(root, "scripts"))
+		handler := NewHandler(store, graph, apphttp.WriteJSON)
+		project := map[string]any{
+			"project_id":             "proj-1",
+			"graph_id":               "graph-1",
+			"simulation_requirement": "Test simulation",
+		}
+		if err := store.WriteProject("proj-1", project); err != nil {
+			t.Fatalf("WriteProject: %v", err)
+		}
+		if err := store.WriteSimulation("sim-1", map[string]any{"simulation_id": "sim-1", "project_id": "proj-1", "graph_id": "graph-1", "status": "created"}); err != nil {
+			t.Fatalf("WriteSimulation: %v", err)
+		}
 		req := httptest.NewRequest(http.MethodPost, "/api/simulation/prepare", bytes.NewBufferString(`{"simulation_id":"sim-1","use_llm_for_profiles":false}`))
 		rec := httptest.NewRecorder()
 		handler.HandlePrepare(rec, req)
@@ -130,6 +133,19 @@ func TestHandlePrepareValidationAndAccepted(t *testing.T) {
 		}
 		if _, err := store.ReadTask(taskID); err != nil {
 			t.Fatalf("expected task persisted: %v", err)
+		}
+		// runTask is async; wait so Windows can remove t.TempDir() (no open handles).
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			task, err := store.ReadTask(taskID)
+			if err != nil {
+				break
+			}
+			st, _ := task["status"].(string)
+			if st == "completed" || st == "failed" {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
 		}
 	})
 }
