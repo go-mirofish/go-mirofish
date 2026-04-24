@@ -11,7 +11,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -59,6 +61,22 @@ func mustParseURL(t *testing.T, raw string) *url.URL {
 	return parsed
 }
 
+// workerTestShell returns a POSIX shell on PATH to execute the test fake runner scripts
+// (shell content stored as run_parallel_simulation.py). On Windows, Git for Windows' sh.exe is typical.
+func workerTestShell(t *testing.T) string {
+	t.Helper()
+	for _, name := range []string{"sh", "bash"} {
+		if p, err := exec.LookPath(name); err == nil {
+			return p
+		}
+	}
+	if runtime.GOOS != "windows" {
+		return "/bin/sh"
+	}
+	t.Skip("skipping: need sh or bash in PATH (e.g. Git for Windows) for LocalPythonBridge tests")
+	panic("unreachable")
+}
+
 func newWorkerGateway(t *testing.T) *gateway {
 	t.Helper()
 
@@ -75,7 +93,7 @@ func newWorkerGateway(t *testing.T) *gateway {
 		frontendDistDir: "frontend/dist",
 		simulationsDir:  filepath.Join(tmpDir, "simulations"),
 		scriptsDir:      filepath.Join(tmpDir, "scripts"),
-		pythonWorker:    "/bin/sh",
+		pythonWorker:    workerTestShell(t),
 	})
 }
 
@@ -184,7 +202,7 @@ func TestSimulationRunAliasForwardsToStart(t *testing.T) {
 		frontendDistDir: "frontend/dist",
 		simulationsDir:  tmpDir,
 		scriptsDir:      scriptsDir,
-		pythonWorker:    "/bin/sh",
+		pythonWorker:    workerTestShell(t),
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/simulation/run", strings.NewReader(`{"simulation_id":"sim-1","platform":"parallel"}`))
@@ -523,6 +541,7 @@ sleep 1
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			gw := newWorkerGateway(t)
 			tc.setup(t, gw)
