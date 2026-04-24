@@ -4,7 +4,7 @@
     <div class="docs-arch__inner">
       <svg
         class="docs-arch__svg"
-        viewBox="0 0 560 256"
+        viewBox="0 0 520 300"
         xmlns="http://www.w3.org/2000/svg"
         role="img"
         focusable="false"
@@ -23,53 +23,54 @@
           </marker>
         </defs>
 
-        <!-- Browser -->
-        <rect x="190" y="4" width="180" height="40" rx="6" class="docs-arch__box" />
-        <text x="280" y="30" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchBrowser') }}</text>
+        <!-- 1. Browser -->
+        <rect x="180" y="2" width="160" height="30" class="docs-arch__box" />
+        <text x="260" y="22" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchBrowser') }}</text>
 
-        <line x1="280" y1="44" x2="280" y2="56" class="docs-arch__line" marker-end="url(#arch-arrow)" />
-        <text x="288" y="54" class="docs-arch__hint">{{ $t('docs.overviewArchHttp') }}</text>
+        <line x1="260" y1="32" x2="260" y2="42" class="docs-arch__line" marker-end="url(#arch-arrow)" />
+        <text x="268" y="40" class="docs-arch__hint">{{ $t('docs.overviewArchHttp') }}</text>
 
-        <!-- Web + optional gateway -->
+        <!-- 2. Vue + Vite -->
+        <rect x="140" y="46" width="240" height="34" class="docs-arch__box" />
+        <text x="260" y="67" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchWebLayer') }}</text>
+
+        <line x1="260" y1="80" x2="260" y2="90" class="docs-arch__line" marker-end="url(#arch-arrow)" />
+        <text x="268" y="88" class="docs-arch__hint">{{ $t('docs.overviewArchProxy') }}</text>
+
+        <!-- 3. Go gateway (control plane) -->
         <rect
-          x="120"
-          y="60"
+          x="100"
+          y="94"
           width="320"
-          height="48"
-          rx="6"
+          height="44"
           class="docs-arch__box docs-arch__box--emph"
         />
-        <text x="280" y="86" text-anchor="middle" class="docs-arch__t">
-          {{ $t('docs.overviewArchWebLayer') }}
-        </text>
-        <text x="280" y="100" text-anchor="middle" class="docs-arch__t docs-arch__t--muted">
-          {{ $t('docs.overviewArchGoNote') }}
+        <text x="260" y="115" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchGateway') }}</text>
+        <text x="260" y="130" text-anchor="middle" class="docs-arch__t docs-arch__t--muted">
+          {{ $t('docs.overviewArchGatewaySub') }}
         </text>
 
-        <line x1="280" y1="108" x2="280" y2="120" class="docs-arch__line" marker-end="url(#arch-arrow)" />
-        <text x="288" y="118" class="docs-arch__hint">{{ $t('docs.overviewArchApiPath') }}</text>
+        <line x1="260" y1="138" x2="260" y2="150" class="docs-arch__line" marker-end="url(#arch-arrow)" />
+        <text x="268" y="148" class="docs-arch__hint">{{ $t('docs.overviewArchBackendPath') }}</text>
 
-        <!-- Flask -->
-        <rect x="160" y="124" width="240" height="40" rx="6" class="docs-arch__box" />
-        <text x="280" y="150" text-anchor="middle" class="docs-arch__t">
-          {{ $t('docs.overviewArchFlask') }}
-        </text>
+        <!-- 4. Python API -->
+        <rect x="140" y="154" width="240" height="34" class="docs-arch__box" />
+        <text x="260" y="175" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchFlask') }}</text>
 
-        <!-- Fork: vertical then horizontal then down -->
-        <line x1="280" y1="164" x2="280" y2="180" class="docs-arch__line" />
-        <line x1="150" y1="180" x2="410" y2="180" class="docs-arch__line" />
-        <line x1="150" y1="180" x2="150" y2="196" class="docs-arch__line" marker-end="url(#arch-arrow)" />
-        <line x1="410" y1="180" x2="410" y2="196" class="docs-arch__line" marker-end="url(#arch-arrow)" />
+        <line x1="260" y1="188" x2="260" y2="198" class="docs-arch__line" />
+        <line x1="130" y1="198" x2="390" y2="198" class="docs-arch__line" />
+        <line x1="150" y1="198" x2="150" y2="208" class="docs-arch__line" marker-end="url(#arch-arrow)" />
+        <line x1="370" y1="198" x2="370" y2="208" class="docs-arch__line" marker-end="url(#arch-arrow)" />
 
-        <rect x="80" y="200" width="140" height="48" rx="6" class="docs-arch__box" />
-        <text x="150" y="224" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchLlm') }}</text>
-        <text x="150" y="240" text-anchor="middle" class="docs-arch__t docs-arch__t--tiny">
+        <rect x="60" y="210" width="180" height="38" class="docs-arch__box" />
+        <text x="150" y="230" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchLlm') }}</text>
+        <text x="150" y="244" text-anchor="middle" class="docs-arch__t docs-arch__t--tiny">
           {{ $t('docs.overviewArchLlmSub') }}
         </text>
 
-        <rect x="340" y="200" width="140" height="48" rx="6" class="docs-arch__box" />
-        <text x="410" y="224" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchZep') }}</text>
-        <text x="410" y="240" text-anchor="middle" class="docs-arch__t docs-arch__t--tiny">
+        <rect x="280" y="210" width="180" height="38" class="docs-arch__box" />
+        <text x="370" y="230" text-anchor="middle" class="docs-arch__t">{{ $t('docs.overviewArchZep') }}</text>
+        <text x="370" y="244" text-anchor="middle" class="docs-arch__t docs-arch__t--tiny">
           {{ $t('docs.overviewArchZepSub') }}
         </text>
       </svg>
@@ -93,7 +94,7 @@
 }
 .docs-arch__inner {
   border: 1px solid var(--doc-border, #e5e7eb);
-  border-radius: 8px;
+  border-radius: 0;
   background: var(--doc-bg, #f4f4f5);
   padding: 0.75rem 0.5rem 0.5rem;
   overflow-x: auto;
@@ -101,8 +102,8 @@
 .docs-arch__svg {
   display: block;
   width: 100%;
-  min-width: 320px;
-  max-width: 680px;
+  min-width: 300px;
+  max-width: 640px;
   height: auto;
   margin: 0 auto;
 }
@@ -121,18 +122,18 @@ html[data-theme='dark'] .docs-arch__box--emph {
 }
 .docs-arch__t {
   fill: var(--doc-text, #111827);
-  font-size: 12px;
+  font-size: 11px;
   font-family: var(--doc-font-sans, system-ui, sans-serif);
   font-weight: 600;
   pointer-events: none;
 }
 .docs-arch__t--muted {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
   fill: var(--doc-muted, #6b7280);
 }
 .docs-arch__t--tiny {
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 500;
   fill: var(--doc-muted, #6b7280);
 }
