@@ -1,0 +1,42 @@
+{
+  "captured_at": "2026-04-25T00:00:00Z",
+  "release": "v0.1.0",
+  "title": "Live hybrid stack benchmark",
+  "host": "local",
+  "backend_health": {
+    "status": "ok",
+    "service": "go-mirofish-backend"
+  },
+  "gateway_health": {
+    "status": "ok",
+    "service": "go-mirofish-gateway"
+  },
+  "proof": {
+    "backend_boot": true,
+    "gateway_boot": true,
+    "bounded_stress": true,
+    "full_flow": true
+  },
+  "stress": {
+    "request_count": 100,
+    "success_count": 100,
+    "failure_count": 0,
+    "latency_ms": {
+      "min": 1.0,
+      "p50": 9.15,
+      "p95": 27.0,
+      "max": 33.0
+    }
+  },
+  "benchmark": {
+    "ok": true,
+    "summary": {
+      "project_id": "proj_live",
+      "graph_id": "graph_live",
+      "simulation_id": "sim_live",
+      "report_id": "report_live",
+      "simulation_status": "completed",
+      "report_status": "completed"
+    }
+  }
+}
