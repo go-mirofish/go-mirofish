@@ -1,13 +1,20 @@
 import { computed, ref } from 'vue'
 
 const STORAGE_KEY = 'go-mirofish-api-base-url'
-const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
+const LEGACY_BACKEND_BASES = new Set([
+  'http://localhost:5001',
+  'http://127.0.0.1:5001'
+])
+const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 const runtimeApiBaseUrl = ref(DEFAULT_API_BASE)
 
 function normalizeApiBaseUrl(value) {
   const trimmed = String(value || '').trim()
   if (!trimmed) return DEFAULT_API_BASE
+  if (LEGACY_BACKEND_BASES.has(trimmed.replace(/\/+$/, ''))) {
+    return DEFAULT_API_BASE
+  }
   return trimmed.replace(/\/+$/, '')
 }
 
