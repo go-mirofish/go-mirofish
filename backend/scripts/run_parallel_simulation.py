@@ -40,6 +40,7 @@ from typing import Dict, Any, List, Optional, Tuple
 
 _shutdown_event = None
 _cleanup_done = False
+logger = logging.getLogger(__name__)
 
 _scripts_dir = os.path.dirname(os.path.abspath(__file__))
 _backend_dir = os.path.abspath(os.path.join(_scripts_dir, '..'))
@@ -138,11 +139,29 @@ REDDIT_ACTIONS = [
 IPC_COMMANDS_DIR = "ipc_commands"
 IPC_RESPONSES_DIR = "ipc_responses"
 ENV_STATUS_FILE = "env_status.json"
+STATE_FILE = "state.json"
 
 class CommandType:
     INTERVIEW = "interview"
     BATCH_INTERVIEW = "batch_interview"
     CLOSE_ENV = "close_env"
+
+
+def _merge_state(simulation_dir: str, updates: Dict[str, Any]) -> None:
+    state_path = os.path.join(simulation_dir, STATE_FILE)
+    state: Dict[str, Any] = {}
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                state = loaded
+        except (json.JSONDecodeError, OSError):
+            state = {}
+    state.update(updates)
+    state["updated_at"] = datetime.now().isoformat()
+    with open(state_path, 'w', encoding='utf-8') as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
 
 
 class ParallelIPCHandler:
@@ -266,6 +285,7 @@ class ParallelIPCHandler:
             "platforms": {}
         }
         success_count = 0
+        errors: List[str] = []
         
         tasks = []
         platforms_to_interview = []
@@ -284,6 +304,8 @@ class ParallelIPCHandler:
             results["platforms"][platform_name] = platform_result
             if "error" not in platform_result:
                 success_count += 1
+            else:
+                errors.append(f"{platform_name}: {platform_result['error']}")
         
         if success_count > 0:
             self.send_response(command_id, "completed", result=results)
@@ -295,6 +317,7 @@ class ParallelIPCHandler:
     async def handle_batch_interview(self, command_id: str, interviews: List[Dict], platform: str = None) -> bool:
         twitter_interviews = []
         reddit_interviews = []
+        both_platforms_interviews = []
         
         for interview in interviews:
             item_platform = interview.get("platform", platform)
@@ -407,7 +430,7 @@ class ParallelIPCHandler:
             conn.close()
             
         except Exception as e:
-            self.logger.warning(f"Failed to read interview result for agent {agent_id}: {e}")
+            logger.warning(f"Failed to read interview result for agent {agent_id}: {e}")
 
         return result
     
@@ -851,7 +874,7 @@ async def run_twitter_simulation(
     
     profile_path = os.path.join(simulation_dir, "twitter_profiles.csv")
     if not os.path.exists(profile_path):
-        return result
+        raise FileNotFoundError(f"Twitter profile file does not exist: {profile_path}")
     
     result.agent_graph = await generate_twitter_agent_graph(
         profile_path=profile_path,
@@ -875,6 +898,7 @@ async def run_twitter_simulation(
     )
     
     await result.env.reset()
+    last_rowid = 0
     
     if action_logger:
         action_logger.log_simulation_start(config)
@@ -1011,7 +1035,7 @@ async def run_reddit_simulation(
     
     profile_path = os.path.join(simulation_dir, "reddit_profiles.json")
     if not os.path.exists(profile_path):
-        return result
+        raise FileNotFoundError(f"Reddit profile file does not exist: {profile_path}")
     
     result.agent_graph = await generate_reddit_agent_graph(
         profile_path=profile_path,
@@ -1035,6 +1059,7 @@ async def run_reddit_simulation(
     )
     
     await result.env.reset()
+    last_rowid = 0
     
     if action_logger:
         action_logger.log_simulation_start(config)
@@ -1201,6 +1226,17 @@ async def main():
     config = load_config(args.config)
     simulation_dir = os.path.dirname(args.config) or "."
     wait_for_commands = not args.no_wait
+    started_at = datetime.now()
+    _merge_state(
+        simulation_dir,
+        {
+            "status": "running",
+            "error": None,
+            "twitter_status": "running" if not args.reddit_only else "skipped",
+            "reddit_status": "running" if not args.twitter_only else "skipped",
+            "started_at": started_at.isoformat(),
+        },
+    )
     
     init_logging_for_simulation(simulation_dir)
     
@@ -1227,19 +1263,51 @@ async def main():
     twitter_result: Optional[PlatformSimulation] = None
     reddit_result: Optional[PlatformSimulation] = None
     
-    if args.twitter_only:
-        twitter_result = await run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds)
-    elif args.reddit_only:
-        reddit_result = await run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds)
-    else:
-        results = await asyncio.gather(
-            run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds),
-            run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds),
+    try:
+        if args.twitter_only:
+            twitter_result = await run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds)
+            if twitter_result.env is None or twitter_result.agent_graph is None:
+                raise RuntimeError("Twitter simulation lane did not initialize correctly")
+        elif args.reddit_only:
+            reddit_result = await run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds)
+            if reddit_result.env is None or reddit_result.agent_graph is None:
+                raise RuntimeError("Reddit simulation lane did not initialize correctly")
+        else:
+            results = await asyncio.gather(
+                run_twitter_simulation(config, simulation_dir, twitter_logger, log_manager, args.max_rounds),
+                run_reddit_simulation(config, simulation_dir, reddit_logger, log_manager, args.max_rounds),
+            )
+            twitter_result, reddit_result = results
+            if twitter_result.env is None or twitter_result.agent_graph is None:
+                raise RuntimeError("Twitter simulation lane did not initialize correctly")
+            if reddit_result.env is None or reddit_result.agent_graph is None:
+                raise RuntimeError("Reddit simulation lane did not initialize correctly")
+    except Exception as exc:
+        _merge_state(
+            simulation_dir,
+            {
+                "status": "failed",
+                "error": str(exc),
+                "twitter_status": "failed" if not args.reddit_only else "skipped",
+                "reddit_status": "failed" if not args.twitter_only else "skipped",
+                "completed_at": datetime.now().isoformat(),
+            },
         )
-        twitter_result, reddit_result = results
+        raise
     
     total_elapsed = (datetime.now() - start_time).total_seconds()
     log_manager.info("=" * 60)
+    _merge_state(
+        simulation_dir,
+        {
+            "status": "completed",
+            "error": None,
+            "twitter_status": "completed" if twitter_result else "skipped",
+            "reddit_status": "completed" if reddit_result else "skipped",
+            "completed_at": datetime.now().isoformat(),
+            "simulation_duration_seconds": round(total_elapsed, 2),
+        },
+    )
     
     if wait_for_commands:
         log_manager.info("")
