@@ -334,6 +334,14 @@ func TestHandleGeneratePersistenceFailureReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func errorStringLooksLikeFileNotOpen(s string) bool {
+	// Go surfaces OS-specific phrasing: Unix "no such file or directory" vs
+	// Windows "The system cannot find the path specified."
+	return strings.Contains(s, "no such file or directory") ||
+		strings.Contains(s, "cannot find the path") ||
+		strings.Contains(s, "cannot find the file")
+}
+
 func TestHandleStatusBadRequestAndMissing(t *testing.T) {
 	store := reportstore.NewFileStore(filepath.Join(t.TempDir(), "reports"))
 	handler := newHandlerForTest(t, store, memoryStub{}, nil)
@@ -345,6 +353,7 @@ func TestHandleStatusBadRequestAndMissing(t *testing.T) {
 		body         string
 		wantStatus   int
 		wantFragment string
+		wantFSError  bool
 	}{
 		{
 			name:         "missing identifiers via get",
@@ -358,7 +367,7 @@ func TestHandleStatusBadRequestAndMissing(t *testing.T) {
 			method:       http.MethodGet,
 			target:       "/api/report/generate/status?report_id=missing",
 			wantStatus:   http.StatusNotFound,
-			wantFragment: "no such file or directory",
+			wantFSError:  true,
 		},
 		{
 			name:         "missing simulation id",
@@ -371,6 +380,7 @@ func TestHandleStatusBadRequestAndMissing(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.target, bytes.NewBufferString(tt.body))
 			rec := httptest.NewRecorder()
@@ -379,8 +389,15 @@ func TestHandleStatusBadRequestAndMissing(t *testing.T) {
 				t.Fatalf("expected %d, got %d", tt.wantStatus, rec.Code)
 			}
 			payload := decodePayload(t, rec)
-			if !strings.Contains(payload["error"].(string), tt.wantFragment) {
-				t.Fatalf("expected error containing %q, got %q", tt.wantFragment, payload["error"])
+			errStr := payload["error"].(string)
+			if tt.wantFSError {
+				if !errorStringLooksLikeFileNotOpen(errStr) {
+					t.Fatalf("expected a file-not-found style error, got %q", errStr)
+				}
+				return
+			}
+			if !strings.Contains(errStr, tt.wantFragment) {
+				t.Fatalf("expected error containing %q, got %q", tt.wantFragment, errStr)
 			}
 		})
 	}
