@@ -1,5 +1,6 @@
 /** Display titles for first segment of bundled benchmark filenames (`scenario__profile__variant.json` — `__` avoids ambiguity with hyphens in scenario slugs). */
 export const BENCHMARK_SCENARIO_LABELS = {
+  'live-stack': 'Live stack report',
   'defi-stress': 'DeFi sentiment',
   'urban-planning': 'Urban planning',
   'literary-sim': 'Literary / Lost',
@@ -35,7 +36,7 @@ export function parseBundledBenchmarkPath(rel) {
     }
   }
   const [scenario, profile, ...rest] = parts
-  const variant = rest.join('--') || 'latest'
+  const variant = rest.join('__') || 'latest'
   const title = BENCHMARK_SCENARIO_LABELS[scenario] || scenario.replace(/-/g, ' ')
   const variantLabel = formatVariantForDisplay(variant)
   const display = `${title} · ${profile} · ${variantLabel}`
