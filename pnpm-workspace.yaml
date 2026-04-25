@@ -1,0 +1,5 @@
+# Root + frontend are separate packages; pnpm -r (default at root) installs all so Vite
+# and other frontend deps are available for `npm/pnpm run build --prefix frontend` (CI/Vercel).
+packages:
+  - "."
+  - "frontend"
