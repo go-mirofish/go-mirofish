@@ -148,3 +148,32 @@ func TestFileStoreLegacyCompatibilityAndHelpers(t *testing.T) {
 		t.Fatalf("expected 3, got %d", got)
 	}
 }
+
+func TestFileStoreValidationAndCorruption(t *testing.T) {
+	reportsDir := filepath.Join(t.TempDir(), "reports")
+	store := NewFileStore(reportsDir)
+
+	if err := store.SaveMeta("report-bad", ReportMeta{}); err == nil {
+		t.Fatalf("expected SaveMeta validation error")
+	}
+	if err := store.SaveProgress("report-bad", Progress{Status: "completed", Progress: 101}); err == nil {
+		t.Fatalf("expected SaveProgress validation error")
+	}
+	if err := store.SaveMarkdown("report-bad", "   "); err == nil {
+		t.Fatalf("expected SaveMarkdown validation error")
+	}
+	if err := store.SaveSection("report-bad", 1, "", "body"); err == nil {
+		t.Fatalf("expected SaveSection validation error")
+	}
+
+	reportDir := filepath.Join(reportsDir, "report-corrupt")
+	if err := os.MkdirAll(reportDir, 0o755); err != nil {
+		t.Fatalf("mkdir corrupt report dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(reportDir, "meta.json"), []byte("{"), 0o644); err != nil {
+		t.Fatalf("write corrupt meta: %v", err)
+	}
+	if _, err := store.LoadMeta("report-corrupt"); err == nil {
+		t.Fatalf("expected LoadMeta error for corrupt json")
+	}
+}
