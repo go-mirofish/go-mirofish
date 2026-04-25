@@ -50,30 +50,21 @@
                 <!-- Completed Content -->
                 <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
                 
-                <!-- Loading State -->
-                <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
-                  <div class="loading-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="var(--doc-border)"></circle>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="var(--doc-muted)" stroke-linecap="round"></path>
-                    </svg>
+                <div v-else-if="currentSectionIndex === idx + 1" class="section-loading">
+                  <p class="section-loading__label">{{ $t('step4.generatingSection', { title: section.title }) }}</p>
+                  <p class="section-loading__hint">{{ $t('step4.sectionDraftHint') }}</p>
+                  <div class="section-loading__skeleton" aria-hidden="true">
+                    <span class="sec-sk sec-sk--a" />
+                    <span class="sec-sk sec-sk--b" />
+                    <span class="sec-sk sec-sk--c" />
                   </div>
-                  <span class="loading-text">{{ $t('step4.generatingSection', { title: section.title }) }}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Waiting State -->
-        <div v-if="!reportOutline" class="waiting-placeholder">
-          <div class="waiting-animation">
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-          </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
-        </div>
+        <ReportPreparingPanel v-if="!reportOutline" />
       </div>
 
       <!-- RIGHT PANEL: Interaction Interface -->
@@ -414,6 +405,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { chatWithReport, getReport, getAgentLog } from '../api/report'
+import ReportPreparingPanel from './ReportPreparingPanel.vue'
 import { interviewAgents, getSimulationProfilesRealtime } from '../api/simulation'
 
 const { t } = useI18n()
@@ -1195,33 +1187,59 @@ watch(() => props.simulationId, (newId) => {
   color: var(--doc-text);
 }
 
-/* Loading State */
-.loading-state {
+.section-loading {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 6px;
   color: var(--doc-muted);
-  font-size: 14px;
+}
+
+.section-loading__label {
+  margin: 0;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 15px;
+  color: var(--doc-text);
+  opacity: 0.9;
+}
+
+.section-loading__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--doc-muted);
+  max-width: 40em;
+}
+
+.section-loading__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 4px;
 }
 
-.loading-icon {
-  width: 18px;
-  height: 18px;
-  animation: spin 1s linear infinite;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.sec-sk {
+  display: block;
+  height: 9px;
+  border-radius: 4px;
+  background: linear-gradient(
+    100deg,
+    var(--doc-border) 0%,
+    color-mix(in srgb, var(--doc-text) 10%, var(--doc-border)) 50%,
+    var(--doc-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: sec-sk-shimmer 1.3s ease-in-out infinite;
 }
 
-.loading-text {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 15px;
-  color: var(--doc-muted);
-}
+.sec-sk--a { width: 100%; }
+.sec-sk--b { width: 92%; opacity: 0.88; }
+.sec-sk--c { width: 64%; height: 8px; opacity: 0.75; }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+@keyframes sec-sk-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 /* Content Styles Override */
@@ -1229,50 +1247,6 @@ watch(() => props.simulationId, (newId) => {
   font-family: 'Times New Roman', Times, serif;
   font-size: 18px;
   margin-top: 0;
-}
-
-/* Waiting Placeholder */
-.waiting-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 40px;
-  color: var(--doc-muted);
-}
-
-.waiting-animation {
-  position: relative;
-  width: 48px;
-  height: 48px;
-}
-
-.waiting-ring {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border: 2px solid var(--doc-border);
-  border-radius: 50%;
-  animation: ripple 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.waiting-ring:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.waiting-ring:nth-child(3) {
-  animation-delay: 0.8s;
-}
-
-@keyframes ripple {
-  0% { transform: scale(0.5); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
-}
-
-.waiting-text {
-  font-size: 14px;
 }
 
 /* Right Panel - Interaction */
