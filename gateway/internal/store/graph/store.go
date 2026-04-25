@@ -2,10 +2,13 @@ package graphstore
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/go-mirofish/go-mirofish/gateway/internal/telemetry"
 )
 
 type TaskState struct {
@@ -74,11 +77,19 @@ func (s *Store) SaveTask(task TaskState) error {
 }
 
 func (s *Store) writeTask(task TaskState) error {
+	if err := validateTask(task); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(task, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.taskPath(task.TaskID), raw, 0o644)
+	tmpPath := s.taskPath(task.TaskID) + ".tmp"
+	if err := os.WriteFile(tmpPath, raw, 0o644); err != nil {
+		return err
+	}
+	telemetry.RecordTask(task.TaskType, task.Status)
+	return os.Rename(tmpPath, s.taskPath(task.TaskID))
 }
 
 func (s *Store) LoadProject(projectID string) (map[string]any, error) {
@@ -94,11 +105,24 @@ func (s *Store) LoadProject(projectID string) (map[string]any, error) {
 }
 
 func (s *Store) SaveProject(projectID string, payload map[string]any) error {
+	if strFromAny(payload["project_id"]) == "" {
+		payload["project_id"] = projectID
+	}
+	if strFromAny(payload["project_id"]) == "" {
+		return fmt.Errorf("project payload missing project_id")
+	}
 	raw, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.projectPath(projectID), raw, 0o644)
+	tmpPath := s.projectPath(projectID) + ".tmp"
+	if err := os.MkdirAll(filepath.Dir(s.projectPath(projectID)), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(tmpPath, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, s.projectPath(projectID))
 }
 
 func (s *Store) DeleteProject(projectID string) error {
@@ -169,4 +193,35 @@ func (s *Store) ListProjects(limit int) ([]map[string]any, error) {
 		projects = projects[:limit]
 	}
 	return projects, nil
+}
+
+func validateTask(task TaskState) error {
+	if task.TaskID == "" {
+		return fmt.Errorf("graph task missing task_id")
+	}
+	if task.TaskType == "" {
+		return fmt.Errorf("graph task missing task_type")
+	}
+	if task.Status == "" {
+		return fmt.Errorf("graph task missing status")
+	}
+	return nil
+}
+
+func valueString(value any) string {
+	return strFromAny(value)
+}
+
+// strFromAny coerces JSON-decoded map values (string, float64, etc.) to string.
+func strFromAny(value any) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case fmt.Stringer:
+		return v.String()
+	case nil:
+		return ""
+	default:
+		return fmt.Sprint(v)
+	}
 }
