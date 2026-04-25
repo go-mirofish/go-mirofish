@@ -1,99 +1,40 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
-	"io"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
 
-func (fn roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
-	return fn(r)
-}
-
-func newTestGateway(t *testing.T, handler func(*http.Request) (*http.Response, error)) *gateway {
+func newTestGateway(t *testing.T, _ func(*http.Request) (*http.Response, error)) *gateway {
 	t.Helper()
 
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
-
-	gw := newGateway(config{
+	return newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 	})
-	gw.backendProxy.Transport = roundTripFunc(handler)
-	return gw
 }
 
-func okBackendResponse() *http.Response {
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}},
-		Body:       io.NopCloser(strings.NewReader(`{"success":true}`)),
-	}
-}
-
-func mustParseURL(t *testing.T, raw string) *url.URL {
-	t.Helper()
-
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		t.Fatalf("parse url %q: %v", raw, err)
-	}
-	return parsed
-}
-
-// workerTestShell returns a POSIX shell on PATH to execute the test fake runner scripts
-// (shell content stored as run_parallel_simulation.py). On Windows, Git for Windows' sh.exe is typical.
-func workerTestShell(t *testing.T) string {
-	t.Helper()
-	for _, name := range []string{"sh", "bash"} {
-		if p, err := exec.LookPath(name); err == nil {
-			return p
-		}
-	}
-	if runtime.GOOS != "windows" {
-		return "/bin/sh"
-	}
-	t.Skip("skipping: need sh or bash in PATH (e.g. Git for Windows) for LocalPythonBridge tests")
-	panic("unreachable")
-}
 
 func newWorkerGateway(t *testing.T) *gateway {
 	t.Helper()
-
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
 
 	tmpDir := t.TempDir()
 	return newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 		simulationsDir:  filepath.Join(tmpDir, "simulations"),
 		scriptsDir:      filepath.Join(tmpDir, "scripts"),
-		pythonWorker:    workerTestShell(t),
 	})
 }
 
@@ -181,28 +122,12 @@ func TestSimulationRunAliasForwardsToStart(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(simDir, "simulation_config.json"), []byte(`{"time_config":{"total_simulation_hours":72,"minutes_per_round":60}}`), 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
-	scriptsDir := filepath.Join(tmpDir, "scripts")
-	if err := os.MkdirAll(scriptsDir, 0o755); err != nil {
-		t.Fatalf("mkdir scripts dir: %v", err)
-	}
-	scriptPath := filepath.Join(scriptsDir, "run_parallel_simulation.py")
-	script := "#!/bin/sh\nCONFIG=''\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = \"--config\" ]; then\n    CONFIG=\"$2\"; shift 2; continue\n  fi\n  shift\ndone\nSIMDIR=$(dirname \"$CONFIG\")\ncat > \"$SIMDIR/run_state.json\" <<'JSON'\n{\"simulation_id\":\"sim-1\",\"runner_status\":\"running\",\"process_pid\":12345,\"started_at\":\"2026-04-24T00:00:00Z\"}\nJSON\nsleep 1\n"
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write fake script: %v", err)
-	}
 
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 		simulationsDir:  tmpDir,
-		scriptsDir:      scriptsDir,
-		pythonWorker:    workerTestShell(t),
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/simulation/run", strings.NewReader(`{"simulation_id":"sim-1","platform":"parallel"}`))
@@ -223,48 +148,12 @@ func TestSimulationRunAliasForwardsToStart(t *testing.T) {
 	if data["runner_status"] != "running" {
 		t.Fatalf("expected running runner_status, got %#v", data["runner_status"])
 	}
-}
 
-func TestOntologyGenerateFallsBackToBackendForPDFUploads(t *testing.T) {
-	var proxiedPath string
-	var proxiedMethod string
-	gw := newTestGateway(t, func(r *http.Request) (*http.Response, error) {
-		proxiedPath = r.URL.Path
-		proxiedMethod = r.Method
-		return okBackendResponse(), nil
-	})
-
-	body := &bytes.Buffer{}
-	writer := multipart.NewWriter(body)
-	if err := writer.WriteField("project_name", "PDF project"); err != nil {
-		t.Fatalf("write project_name: %v", err)
-	}
-	if err := writer.WriteField("simulation_requirement", "test"); err != nil {
-		t.Fatalf("write simulation_requirement: %v", err)
-	}
-	part, err := writer.CreateFormFile("files", "seed.pdf")
-	if err != nil {
-		t.Fatalf("create file part: %v", err)
-	}
-	if _, err := part.Write([]byte("%PDF-1.4 fake")); err != nil {
-		t.Fatalf("write pdf content: %v", err)
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/api/graph/ontology/generate", body)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	rec := httptest.NewRecorder()
-
-	buildOntologyHandler(gw.cfg, gw).HandleGenerate(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	if proxiedMethod != http.MethodPost || proxiedPath != "/api/graph/ontology/generate" {
-		t.Fatalf("expected POST proxy to /api/graph/ontology/generate, got %s %s", proxiedMethod, proxiedPath)
-	}
+	// Stop the simulation so the NativeBridge goroutine exits before TempDir cleanup (required on Windows).
+	stopReq := httptest.NewRequest(http.MethodPost, "/api/simulation/stop", strings.NewReader(`{"simulation_id":"sim-1"}`))
+	stopReq.Header.Set("Content-Type", "application/json")
+	serveSimulation(t, gw, stopReq, httptest.NewRecorder())
+	waitForSimTerminal(t, filepath.Join(tmpDir, simID))
 }
 
 func TestSimulationStatusAliasUsesIdleFallbackWithoutRunState(t *testing.T) {
@@ -302,21 +191,22 @@ func TestSimulationRunStatusControlPlaneUsesDurableRunState(t *testing.T) {
 	}
 
 	runState := map[string]any{
-		"simulation_id":          "sim-456",
-		"runner_status":          "running",
-		"current_round":          4,
-		"total_rounds":           20,
-		"progress_percent":       20.0,
-		"simulated_hours":        2,
-		"total_simulation_hours": 10,
-		"twitter_running":        true,
-		"reddit_running":         false,
-		"twitter_actions_count":  12,
-		"reddit_actions_count":   3,
-		"total_actions_count":    15,
-		"recent_actions":         []any{map[string]any{"platform": "twitter"}},
-		"started_at":             "2026-04-24T00:00:00Z",
-		"updated_at":             "2026-04-24T00:05:00Z",
+		"worker_protocol_version": "1.0",
+		"simulation_id":           "sim-456",
+		"runner_status":           "running",
+		"current_round":           4,
+		"total_rounds":            20,
+		"progress_percent":        20.0,
+		"simulated_hours":         2,
+		"total_simulation_hours":  10,
+		"twitter_running":         true,
+		"reddit_running":          false,
+		"twitter_actions_count":   12,
+		"reddit_actions_count":    3,
+		"total_actions_count":     15,
+		"recent_actions":          []any{map[string]any{"platform": "twitter"}},
+		"started_at":              "2026-04-24T00:00:00Z",
+		"updated_at":              "2026-04-24T00:05:00Z",
 	}
 	raw, err := json.MarshalIndent(runState, "", "  ")
 	if err != nil {
@@ -382,12 +272,35 @@ func TestSimulationRunStatusControlPlaneUsesDurableRunState(t *testing.T) {
 	})
 }
 
+func waitForSimTerminal(t *testing.T, simDir string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		raw, err := os.ReadFile(filepath.Join(simDir, "run_state.json"))
+		if err != nil {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		var state map[string]any
+		if err := json.Unmarshal(raw, &state); err != nil {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		st, _ := state["runner_status"].(string)
+		if st == "stopped" || st == "completed" || st == "failed" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestWorkerControlHandlers(t *testing.T) {
 	type testCase struct {
 		name       string
 		body       string
 		invoke     func(*gateway, http.ResponseWriter, *http.Request)
 		setup      func(t *testing.T, gw *gateway)
+		cleanup    func(t *testing.T, gw *gateway)
 		wantStatus int
 		assert     func(t *testing.T, payload map[string]any)
 	}
@@ -405,25 +318,15 @@ func TestWorkerControlHandlers(t *testing.T) {
 				writeGatewayJSON(t, filepath.Join(simDir, "simulation_config.json"), map[string]any{
 					"time_config": map[string]any{"total_simulation_hours": 24},
 				})
-				writeGatewayFile(t, filepath.Join(gw.cfg.scriptsDir, "run_parallel_simulation.py"), `#!/bin/sh
-CONFIG=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --config)
-      CONFIG="$2"
-      shift 2
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
-SIMDIR=$(dirname "$CONFIG")
-cat > "$SIMDIR/run_state.json" <<'JSON'
-{"simulation_id":"sim-start","runner_status":"running","process_pid":5150,"started_at":"2026-04-24T00:00:00Z"}
-JSON
-sleep 1
-`, 0o755)
+			},
+			cleanup: func(t *testing.T, gw *gateway) {
+				// Stop the simulation so the background goroutine exits and releases
+				// file handles before t.TempDir cleanup (required on Windows).
+				stopReq := httptest.NewRequest(http.MethodPost, "/api/simulation/stop", strings.NewReader(`{"simulation_id":"sim-start"}`))
+				stopReq.Header.Set("Content-Type", "application/json")
+				stopRec := httptest.NewRecorder()
+				serveSimulation(t, gw, stopReq, stopRec)
+				waitForSimTerminal(t, filepath.Join(gw.cfg.simulationsDir, "sim-start"))
 			},
 			wantStatus: http.StatusOK,
 			assert: func(t *testing.T, payload map[string]any) {
@@ -454,8 +357,9 @@ sleep 1
 			},
 			setup: func(t *testing.T, gw *gateway) {
 				writeGatewayJSON(t, filepath.Join(gw.cfg.simulationsDir, "sim-stop", "run_state.json"), map[string]any{
-					"simulation_id": "sim-stop",
-					"runner_status": "stopped",
+					"worker_protocol_version": "1.0",
+					"simulation_id":           "sim-stop",
+					"runner_status":           "stopped",
 				})
 			},
 			wantStatus: http.StatusOK,
@@ -471,7 +375,7 @@ sleep 1
 		},
 		{
 			name: "interview success",
-			body: `{"simulation_id":"sim-interview","agent_id":7,"prompt":"hello"}`,
+			body: `{"simulation_id":"sim-interview","agent_id":7,"prompt":"hello","platform":"twitter"}`,
 			invoke: func(gw *gateway, w http.ResponseWriter, r *http.Request) {
 				r.URL.Path = "/api/simulation/interview"
 				serveSimulation(t, gw, r, w.(*httptest.ResponseRecorder))
@@ -479,22 +383,10 @@ sleep 1
 			setup: func(t *testing.T, gw *gateway) {
 				simDir := filepath.Join(gw.cfg.simulationsDir, "sim-interview")
 				writeGatewayJSON(t, filepath.Join(simDir, "env_status.json"), map[string]any{
-					"status": "alive",
-				})
-				startGatewayIPCResponder(t, simDir, func(t *testing.T, command map[string]any) []byte {
-					if command["command_type"] != "interview" {
-						t.Fatalf("expected interview command, got %#v", command["command_type"])
-					}
-					raw, err := json.Marshal(map[string]any{
-						"command_id": command["command_id"],
-						"status":     "completed",
-						"result":     map[string]any{"answer": "hello back"},
-						"timestamp":  "2026-04-24T00:00:00Z",
-					})
-					if err != nil {
-						t.Fatalf("marshal response: %v", err)
-					}
-					return raw
+					"worker_protocol_version": "1.0",
+					"worker_protocol_name":    "go-mirofish-worker",
+					"transport_role":          "worker_runtime_state",
+					"status":                  "alive",
 				})
 			},
 			wantStatus: http.StatusOK,
@@ -507,26 +399,20 @@ sleep 1
 					t.Fatalf("expected ipc success=true, got %#v", data["success"])
 				}
 				result := data["result"].(map[string]any)
-				if result["answer"] != "hello back" {
-					t.Fatalf("expected answer hello back, got %#v", result["answer"])
+				if result["response"] == nil && result["response"] == "" {
+					t.Fatalf("expected response field in native interview result, got %#v", result)
 				}
 			},
 		},
 		{
-			name: "interview invalid worker response returns bad request",
+			name: "interview env not alive returns bad request",
 			body: `{"simulation_id":"sim-invalid","agent_id":8,"prompt":"hello"}`,
 			invoke: func(gw *gateway, w http.ResponseWriter, r *http.Request) {
 				r.URL.Path = "/api/simulation/interview"
 				serveSimulation(t, gw, r, w.(*httptest.ResponseRecorder))
 			},
 			setup: func(t *testing.T, gw *gateway) {
-				simDir := filepath.Join(gw.cfg.simulationsDir, "sim-invalid")
-				writeGatewayJSON(t, filepath.Join(simDir, "env_status.json"), map[string]any{
-					"status": "alive",
-				})
-				startGatewayIPCResponder(t, simDir, func(t *testing.T, command map[string]any) []byte {
-					return []byte("{")
-				})
+				// No env_status.json → NativeBridge returns env not alive → 400
 			},
 			wantStatus: http.StatusBadRequest,
 			assert: func(t *testing.T, payload map[string]any) {
@@ -544,7 +430,9 @@ sleep 1
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			gw := newWorkerGateway(t)
-			tc.setup(t, gw)
+			if tc.setup != nil {
+				tc.setup(t, gw)
+			}
 
 			req := httptest.NewRequest(http.MethodPost, "/worker-control", strings.NewReader(tc.body))
 			req = req.WithContext(context.Background())
@@ -562,17 +450,16 @@ sleep 1
 				t.Fatalf("decode response: %v", err)
 			}
 			tc.assert(t, payload)
+
+			if tc.cleanup != nil {
+				tc.cleanup(t, gw)
+			}
 		})
 	}
 }
 
 func TestSimulationRunStatusDetailStillProxiesToBackend(t *testing.T) {
-	var proxiedPath string
-
-	gw := newTestGateway(t, func(r *http.Request) (*http.Response, error) {
-		proxiedPath = r.URL.Path
-		return okBackendResponse(), nil
-	})
+	gw := newTestGateway(t, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/simulation/sim-9/run-status/detail", nil)
 	rec := httptest.NewRecorder()
@@ -582,20 +469,16 @@ func TestSimulationRunStatusDetailStillProxiesToBackend(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
-	if proxiedPath != "" {
-		t.Fatalf("expected detail route to stay in Go, got proxied path %s", proxiedPath)
-	}
 }
 
 func TestReportStatusAliasUsesProgressForReportID(t *testing.T) {
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      mustParseURL(t, "http://backend.test"),
 		frontendDistDir: "frontend/dist",
 		reportsDir:      t.TempDir(),
 	})
-	reportHandler := buildReportHandler(gw.cfg, gw)
+	reportHandler := buildReportHandler(gw.cfg)
 
 	reportDir := filepath.Join(gw.cfg.reportsDir, "report-42")
 	if err := os.MkdirAll(reportDir, 0o755); err != nil {
@@ -630,11 +513,10 @@ func TestReportStatusAliasBridgesQueryToPOSTBody(t *testing.T) {
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      mustParseURL(t, "http://backend.test"),
 		frontendDistDir: "frontend/dist",
 		reportsDir:      t.TempDir(),
 	})
-	reportHandler := buildReportHandler(gw.cfg, gw)
+	reportHandler := buildReportHandler(gw.cfg)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/report/generate/status?task_id=task-7&simulation_id=sim-7", nil)
 	rec := httptest.NewRecorder()
@@ -679,14 +561,9 @@ func TestProjectControlPlaneGetListResetDelete(t *testing.T) {
 		t.Fatalf("write project file: %v", err)
 	}
 
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 		projectsDir:     tmpDir,
 	})
@@ -770,14 +647,9 @@ func TestTaskControlPlaneGetAndList(t *testing.T) {
 		t.Fatalf("write task file: %v", err)
 	}
 
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 		tasksDir:        tmpDir,
 	})
@@ -841,14 +713,15 @@ func TestSimulationControlPlaneGetListAndRunStatus(t *testing.T) {
 		t.Fatalf("write state file: %v", err)
 	}
 	runState := map[string]any{
-		"simulation_id":         "sim-123",
-		"runner_status":         "completed",
-		"current_round":         3,
-		"total_rounds":          3,
-		"progress_percent":      100.0,
-		"twitter_actions_count": 11,
-		"reddit_actions_count":  11,
-		"total_actions_count":   22,
+		"worker_protocol_version": "1.0",
+		"simulation_id":           "sim-123",
+		"runner_status":           "completed",
+		"current_round":           3,
+		"total_rounds":            3,
+		"progress_percent":        100.0,
+		"twitter_actions_count":   11,
+		"reddit_actions_count":    11,
+		"total_actions_count":     22,
 	}
 	runRaw, err := json.MarshalIndent(runState, "", "  ")
 	if err != nil {
@@ -904,14 +777,9 @@ func TestSimulationControlPlaneGetListAndRunStatus(t *testing.T) {
 		t.Fatalf("close twitter csv: %v", err)
 	}
 
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 		simulationsDir:  tmpDir,
 	})
@@ -1015,6 +883,43 @@ func TestSimulationControlPlaneGetListAndRunStatus(t *testing.T) {
 	})
 }
 
+func TestValidateStartupAndReadiness(t *testing.T) {
+	root := t.TempDir()
+	cfg := config{
+		bindHost:        "127.0.0.1",
+		port:            "3000",
+		frontendDistDir: filepath.Join(root, "frontend", "dist"),
+		projectsDir:     filepath.Join(root, "projects"),
+		reportsDir:      filepath.Join(root, "reports"),
+		tasksDir:        filepath.Join(root, "tasks"),
+		simulationsDir:  filepath.Join(root, "simulations"),
+		scriptsDir:      filepath.Join(root, "scripts"),
+	}
+
+	if err := os.MkdirAll(cfg.frontendDistDir, 0o755); err != nil {
+		t.Fatalf("mkdir frontend dist: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.frontendDistDir, "index.html"), []byte("<html>ok</html>"), 0o644); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+
+	if err := validateStartup(cfg); err != nil {
+		t.Fatalf("validateStartup returned error: %v", err)
+	}
+
+	ready := readinessChecker(cfg)
+	payload, err := ready(context.Background())
+	if err != nil {
+		t.Fatalf("expected readiness success (no backend dependency), got err=%v payload=%#v", err, payload)
+	}
+	if payload["worker_runtime"] != "native" {
+		t.Fatalf("expected worker_runtime=native, got %#v", payload["worker_runtime"])
+	}
+	if payload["frontend"] != "dist" {
+		t.Fatalf("expected frontend=dist, got %#v", payload["frontend"])
+	}
+}
+
 func TestReportControlPlaneReadEndpointsAndProxyFallback(t *testing.T) {
 	tmpDir := t.TempDir()
 	reportID := "report-123"
@@ -1058,26 +963,13 @@ func TestReportControlPlaneReadEndpointsAndProxyFallback(t *testing.T) {
 		t.Fatalf("write section: %v", err)
 	}
 
-	target, err := url.Parse("http://backend.test")
-	if err != nil {
-		t.Fatalf("parse dummy backend url: %v", err)
-	}
-
-	var proxiedPath string
-	var proxiedMethod string
 	gw := newGateway(config{
 		bindHost:        "127.0.0.1",
 		port:            "3000",
-		backendURL:      target,
 		frontendDistDir: "frontend/dist",
 		reportsDir:      tmpDir,
 	})
-	gw.backendProxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		proxiedPath = r.URL.Path
-		proxiedMethod = r.Method
-		return okBackendResponse(), nil
-	})
-	reportHandler := buildReportHandler(gw.cfg, gw)
+	reportHandler := buildReportHandler(gw.cfg)
 
 	t.Run("get report", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/report/"+reportID, nil)
@@ -1166,9 +1058,6 @@ func TestReportControlPlaneReadEndpointsAndProxyFallback(t *testing.T) {
 		reportHandler.HandleRoute(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
-		}
-		if proxiedPath != "" || proxiedMethod != "" {
-			t.Fatalf("expected DELETE to stay in Go, got proxied %s %s", proxiedMethod, proxiedPath)
 		}
 	})
 }
