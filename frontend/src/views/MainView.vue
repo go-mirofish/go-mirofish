@@ -44,6 +44,7 @@
           :graphData="graphData"
           :loading="graphLoading"
           :currentPhase="currentPhase"
+          :loadError="graphLoadError"
           @refresh="refreshGraph"
           @toggle-maximize="toggleMaximize('graph')"
         />
@@ -84,6 +85,7 @@ import GraphPanel from '../components/GraphPanel.vue'
 import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
 import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
+import { listSimulations } from '../api/simulation'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
@@ -107,6 +109,7 @@ const graphLoading = ref(false)
 const error = ref('')
 const projectData = ref(null)
 const graphData = ref(null)
+const graphLoadError = ref('')
 const currentPhase = ref(-1) // -1: Upload, 0: Ontology, 1: Build, 2: Complete
 const ontologyProgress = ref(null)
 const buildProgress = ref(null)
@@ -232,6 +235,25 @@ const handleNewProject = async () => {
   }
 }
 
+/**
+ * If this project already has a simulation, open the latest one so the user is not stuck
+ * re-clicking "Enter environment setup" after graph build already finished.
+ */
+const maybeResumeToExistingSimulation = async (projectId) => {
+  if (!projectId) return
+  try {
+    const res = await listSimulations(projectId)
+    if (!res?.success || !Array.isArray(res.data) || res.data.length === 0) return
+    const latest = res.data[0]
+    const sid = latest?.simulation_id
+    if (typeof sid !== 'string' || !sid) return
+    addLog(t('log.resumeToSimulation', { id: sid }))
+    await router.replace({ name: 'Simulation', params: { simulationId: sid } })
+  } catch (e) {
+    console.warn('maybeResumeToExistingSimulation:', e)
+  }
+}
+
 const loadProject = async () => {
   try {
     loading.value = true
@@ -251,6 +273,7 @@ const loadProject = async () => {
       } else if (res.data.status === 'graph_completed' && res.data.graph_id) {
         currentPhase.value = 2
         await loadGraph(res.data.graph_id)
+        await maybeResumeToExistingSimulation(res.data.project_id || currentProjectId.value)
       }
     } else {
       error.value = res.error
@@ -309,12 +332,14 @@ const fetchGraphData = async () => {
       const gRes = await getGraphData(projRes.data.graph_id)
       if (gRes.success) {
         graphData.value = gRes.data
+        graphLoadError.value = ''
         const nodeCount = gRes.data.node_count || gRes.data.nodes?.length || 0
         const edgeCount = gRes.data.edge_count || gRes.data.edges?.length || 0
         addLog(`Graph data refreshed. Nodes: ${nodeCount}, Edges: ${edgeCount}`)
       }
     }
   } catch (err) {
+    graphLoadError.value = err.message || String(err)
     console.warn('Graph fetch error:', err)
   }
 }
@@ -362,16 +387,20 @@ const pollTaskStatus = async (taskId) => {
 
 const loadGraph = async (graphId) => {
   graphLoading.value = true
+  graphLoadError.value = ''
   addLog(`Loading full graph data: ${graphId}`)
   try {
     const res = await getGraphData(graphId)
     if (res.success) {
       graphData.value = res.data
+      graphLoadError.value = ''
       addLog('Graph data loaded successfully.')
     } else {
+      graphLoadError.value = res.error || 'Failed to load graph data'
       addLog(`Failed to load graph data: ${res.error}`)
     }
   } catch (e) {
+    graphLoadError.value = e.message || String(e)
     addLog(`Exception loading graph: ${e.message}`)
   } finally {
     graphLoading.value = false
