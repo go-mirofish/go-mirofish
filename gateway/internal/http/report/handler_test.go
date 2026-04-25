@@ -160,6 +160,14 @@ func (s *storeStub) FindBySimulation(simulationID string) (reportstore.ReportMet
 	return s.base.FindBySimulation(simulationID)
 }
 
+func (s *storeStub) AppendAgentLogLine(reportID string, entry map[string]any) error {
+	return s.base.AppendAgentLogLine(reportID, entry)
+}
+
+func (s *storeStub) AppendConsoleLogLine(reportID string, line string) error {
+	return s.base.AppendConsoleLogLine(reportID, line)
+}
+
 func newHandlerForTest(t *testing.T, store reportstore.Store, mem memory.Client, providerExec intprovider.Executor) *Handler {
 	t.Helper()
 	planner := intreport.NewPlanner(providerExec, "model")
