@@ -12,22 +12,6 @@
       "enabled": false
     },
     {
-      "description": "Auto-merge patch updates for safe Python packages",
-      "matchManagers": ["uv"],
-      "matchUpdateTypes": ["patch"],
-      "matchPackageNames": [
-        "flask",
-        "flask-cors",
-        "openai",
-        "PyMuPDF",
-        "charset-normalizer",
-        "chardet",
-        "python-dotenv",
-        "pydantic"
-      ],
-      "automerge": true
-    },
-    {
       "description": "Group all Go module updates into one PR",
       "matchManagers": ["gomod"],
       "groupName": "Go modules",
@@ -47,9 +31,6 @@
       "automerge": true
     }
   ],
-  "uv": {
-    "enabled": true
-  },
   "gomod": {
     "enabled": true
   },
