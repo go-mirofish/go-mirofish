@@ -1,29 +1,27 @@
 services:
-  backend:
-    build:
-      context: .
-      dockerfile: docker/backend.Dockerfile
-    env_file:
-      - .env
-    restart: unless-stopped
-    expose:
-      - "5001"
-    volumes:
-      - ./backend/uploads:/app/backend/uploads
-
   gateway:
     build:
       context: .
       dockerfile: docker/gateway.Dockerfile
+      target: dev
     env_file:
       - .env
     environment:
-      BACKEND_URL: http://backend:5001
       GATEWAY_BIND_HOST: 0.0.0.0
       GATEWAY_PORT: 3000
-      FRONTEND_DIST_DIR: /app/frontend-dist
-    depends_on:
-      - backend
+      # Local Vite dev server (`npm run dev`); gateway proxies non-API HTML to it when you use :3000 in the browser
+      FRONTEND_DEV_URL: http://host.docker.internal:5173
+      PROJECTS_DIR: /app/data/projects
+      REPORTS_DIR: /app/data/reports
+      TASKS_DIR: /app/data/tasks
+      SIMULATIONS_DIR: /app/data/simulations
     ports:
       - "3000:3000"
+    volumes:
+      - mirofish-data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
+
+volumes:
+  mirofish-data:
