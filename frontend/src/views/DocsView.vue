@@ -135,6 +135,7 @@ const pageTitle = computed(() => {
   if (entry.value?.key === 'showcase') return t('docs.titleShowcase')
   if (entry.value?.key === 'contributing') return t('docs.titleContributing')
   if (entry.value?.key === 'roadmap') return t('docs.titleRoadmap')
+  if (entry.value?.key === 'future-consideration') return t('docs.titleFutureConsideration')
   return t('docs.titleDocs')
 })
 
@@ -194,6 +195,7 @@ const tocHeadings = computed(() => {
     return [
       { level: 2, text: t('docs.roadmap.tocIntro'), id: 'doc-roadmap-hero' },
       { level: 2, text: t('docs.roadmap.tocThemes'), id: 'doc-roadmap-themes' },
+      { level: 2, text: t('docs.roadmap.tocMore'), id: 'doc-roadmap-more' },
     ]
   }
   if (e.type === 'markdown') {
