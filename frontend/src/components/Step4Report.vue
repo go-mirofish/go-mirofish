@@ -325,6 +325,12 @@
                       <span>Report Generation Complete</span>
                     </div>
                   </template>
+
+                  <template v-if="log.action === 'report_failed'">
+                    <div class="status-message planning" style="border-color: var(--doc-warn, #b45309); color: var(--doc-warn, #b45309)">
+                      {{ log.details?.message || 'Report generation failed' }}
+                    </div>
+                  </template>
                 </div>
 
                 <!-- Footer: Elapsed Time + Action Buttons -->
@@ -392,7 +398,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { getAgentLog, getConsoleLog } from '../api/report'
+import { getAgentLog, getConsoleLog, getReport, getReportSections } from '../api/report'
 import ReportPreparingPanel from './ReportPreparingPanel.vue'
 
 const router = useRouter()
@@ -1903,7 +1909,8 @@ const getActionLabel = (action) => {
     'tool_call': 'Tool Call',
     'tool_result': 'Tool Result',
     'llm_response': 'LLM Response',
-    'report_complete': 'Complete'
+    'report_complete': 'Complete',
+    'report_failed': 'Failed',
   }
   return labels[action] || action
 }
@@ -1974,6 +1981,33 @@ const fetchAgentLog = async () => {
     }
   } catch (err) {
     console.warn('Failed to fetch agent log:', err)
+  }
+  await tryHydrateFromCompletedReport()
+}
+
+/** If the report finished while this tab was away, agent_log may be empty; hydrate from meta + section files. */
+const tryHydrateFromCompletedReport = async () => {
+  if (!props.reportId || reportOutline.value || isComplete.value) return
+  try {
+    const res = await getReport(props.reportId)
+    if (!res?.success || !res.data) return
+    const d = res.data
+    if (d.status !== 'completed' || !d.outline) return
+    reportOutline.value = d.outline
+    const sec = await getReportSections(props.reportId)
+    if (sec?.success && sec.data?.sections?.length) {
+      const m = { ...generatedSections.value }
+      for (const s of sec.data.sections) {
+        const idx = s.section_index
+        if (idx != null) m[idx] = s.content
+      }
+      generatedSections.value = m
+    }
+    isComplete.value = true
+    stopPolling()
+    emit('update-status', 'completed')
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -3307,8 +3341,8 @@ watch(() => props.reportId, (newId) => {
   padding: 14px 20px;
   font-size: 14px;
   font-weight: 600;
-  color: #FFFFFF;
-  background: var(--doc-text);
+  color: var(--doc-cta-primary-fg, #ffffff);
+  background: var(--doc-cta-primary-bg, #111827);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -3316,7 +3350,8 @@ watch(() => props.reportId, (newId) => {
 }
 
 .next-step-btn:hover {
-  background: var(--doc-text);
+  filter: brightness(0.95);
+  box-shadow: 0 4px 14px var(--doc-accent-soft, rgba(0, 0, 0, 0.12));
 }
 
 .next-step-btn svg {
