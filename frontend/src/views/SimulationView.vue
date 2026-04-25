@@ -44,6 +44,7 @@
           :graphData="graphData"
           :loading="graphLoading"
           :currentPhase="2"
+          :loadError="graphLoadError"
           @refresh="refreshGraph"
           @toggle-maximize="toggleMaximize('graph')"
         />
@@ -92,6 +93,7 @@ const viewMode = ref('split')
 const currentSimulationId = ref(route.params.simulationId)
 const projectData = ref(null)
 const graphData = ref(null)
+const graphLoadError = ref('')
 const graphLoading = ref(false)
 const systemLogs = ref([])
 const currentStatus = ref('processing') // processing | completed | error
@@ -256,13 +258,16 @@ const loadSimulationData = async () => {
 
 const loadGraph = async (graphId) => {
   graphLoading.value = true
+  graphLoadError.value = ''
   try {
     const res = await getGraphData(graphId)
     if (res.success) {
       graphData.value = res.data
+      graphLoadError.value = ''
       addLog(t('log.graphDataLoadSuccess'))
     }
   } catch (err) {
+    graphLoadError.value = err.message || String(err)
     addLog(t('log.graphLoadFailed', { error: err.message }))
   } finally {
     graphLoading.value = false
