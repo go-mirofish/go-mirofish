@@ -14,7 +14,7 @@ function basename(path) {
 }
 
 /**
- * @param {string} filePath — e.g. `defi-stress--small--latest.json` or full Vite path
+ * @param {string} filePath e.g. `defi-stress--small--latest.json` or full Vite path
  * @returns {string} e.g. `DeFi sentiment · small · latest`
  */
 export function formatBenchmarkRunLabel(filePath) {
