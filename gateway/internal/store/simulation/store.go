@@ -2,39 +2,20 @@ package simulationstore
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/go-mirofish/go-mirofish/gateway/internal/artifactcontract"
+
+	_ "modernc.org/sqlite" // public interview history reads (SQLite) without a Python subprocess
 )
-
-var ErrSimulationNotFound = errors.New("simulation not found")
-
-var (
-	pythonOnPathOnce sync.Once
-	pythonOnPath     string
-)
-
-// pythonForExec returns python3 or python from PATH (Windows often has only "python").
-func pythonForExec() string {
-	pythonOnPathOnce.Do(func() {
-		for _, name := range []string{"python3", "python"} {
-			if p, err := exec.LookPath(name); err == nil {
-				pythonOnPath = p
-				return
-			}
-		}
-		pythonOnPath = "python3"
-	})
-	return pythonOnPath
-}
 
 type Store struct {
 	SimulationsDir string
@@ -57,11 +38,53 @@ func (s *Store) SimulationDir(simulationID string) string {
 }
 
 func (s *Store) ReadState(simulationID string) (map[string]any, error) {
+	controlPath := filepath.Join(s.SimulationDir(simulationID), "control_state.json")
+	payload, err := readJSON(controlPath)
+	if err == nil {
+		return payload, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
 	return readJSON(filepath.Join(s.SimulationDir(simulationID), "state.json"))
 }
 
+// ReadRuntimeState loads state.json written by the simulation worker (Go-native or legacy Python).
+// It complements run_state.json, which not all worker entrypoints emit on every platform.
+func (s *Store) ReadRuntimeState(simulationID string) (map[string]any, error) {
+	path := filepath.Join(s.SimulationDir(simulationID), "state.json")
+	payload, err := readJSON(path)
+	if err == nil {
+		return payload, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	runState, err := s.ReadRunState(simulationID)
+	if err != nil {
+		return nil, err
+	}
+	return runtimeStateFromRunState(runState), nil
+}
+
 func (s *Store) ReadRunState(simulationID string) (map[string]any, error) {
-	return readJSON(filepath.Join(s.SimulationDir(simulationID), "run_state.json"))
+	raw, err := os.ReadFile(filepath.Join(s.SimulationDir(simulationID), "run_state.json"))
+	if err != nil {
+		return nil, err
+	}
+	state, err := artifactcontract.ReadRunStateJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	normalizedRaw, err := artifactcontract.WriteRunStateJSON(state)
+	if err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(normalizedRaw, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
 }
 
 func (s *Store) ReadConfig(simulationID string) (map[string]any, error) {
@@ -165,7 +188,7 @@ func (s *Store) ReadProject(projectID string) (map[string]any, error) {
 }
 
 func (s *Store) WriteState(simulationID string, payload map[string]any) error {
-	path := filepath.Join(s.SimulationDir(simulationID), "state.json")
+	path := filepath.Join(s.SimulationDir(simulationID), "control_state.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -173,7 +196,11 @@ func (s *Store) WriteState(simulationID string, payload map[string]any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0o644)
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 func (s *Store) DeleteSimulation(simulationID string) error {
@@ -218,7 +245,12 @@ func (s *Store) InterviewHistory(simulationID, platform string, agentID *int, li
 	}
 	var results []map[string]any
 	for _, p := range platforms {
-		items, err := s.interviewHistoryFromDB(s.DBPath(simulationID, p), p, agentID, limit)
+		items, err := s.interviewHistoryFromJSONL(simulationID, p, agentID, limit)
+		if err == nil && len(items) > 0 {
+			results = append(results, items...)
+			continue
+		}
+		items, err = s.interviewHistoryFromDB(s.DBPath(simulationID, p), p, agentID, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -231,6 +263,45 @@ func (s *Store) InterviewHistory(simulationID, platform string, agentID *int, li
 		results = results[:limit]
 	}
 	return results, nil
+}
+
+func (s *Store) interviewHistoryFromJSONL(simulationID, platform string, agentID *int, limit int) ([]map[string]any, error) {
+	path := filepath.Join(s.SimulationDir(simulationID), platform+"_interviews.jsonl")
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []map[string]any{}, nil
+		}
+		return nil, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	var out []map[string]any
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(line), &payload); err != nil {
+			return nil, err
+		}
+		if agentID != nil && intValueAny(payload["agent_id"]) != *agentID {
+			continue
+		}
+		out = append(out, payload)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	sort.Slice(out, func(i, j int) bool { return toString(out[i]["timestamp"]) > toString(out[j]["timestamp"]) })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 func (s *Store) FindLatestReportBySimulation(simulationID string) (map[string]any, error) {
@@ -270,64 +341,61 @@ func (s *Store) interviewHistoryFromDB(dbPath, platform string, agentID *int, li
 		}
 		return nil, err
 	}
-	pyCode := `
-import json
-import sqlite3
-import sys
-
-db_path = sys.argv[1]
-platform = sys.argv[2]
-limit = int(sys.argv[3])
-agent_arg = sys.argv[4]
-
-query = """
-    SELECT user_id, info, created_at
-    FROM trace
-    WHERE action = 'interview'
-"""
-params = []
-if agent_arg:
-    query += " AND user_id = ?"
-    params.append(int(agent_arg))
-query += " ORDER BY created_at DESC LIMIT ?"
-params.append(limit)
-
-try:
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-    cur.execute(query, params)
-    rows = []
-    for user_id, info_json, created_at in cur.fetchall():
-        try:
-            info = json.loads(info_json) if info_json else {}
-        except json.JSONDecodeError:
-            info = {"raw": info_json}
-        rows.append({
-            "agent_id": user_id,
-            "response": info.get("response"),
-            "prompt": info.get("prompt", ""),
-            "timestamp": created_at,
-            "platform": platform,
-        })
-    conn.close()
-    print(json.dumps(rows))
-except Exception:
-    print("[]")
-`
-
-	agentArg := ""
-	if agentID != nil {
-		agentArg = strconv.Itoa(*agentID)
-	}
-
-	cmd := exec.Command(pythonForExec(), "-c", pyCode, dbPath, platform, strconv.Itoa(limit), agentArg)
-	raw, err := cmd.Output()
+	abs, err := filepath.Abs(dbPath)
 	if err != nil {
 		return nil, err
 	}
+	dsn := "file:" + filepath.ToSlash(abs) + "?mode=ro"
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		return []map[string]any{}, nil
+	}
+	defer db.Close()
+
+	var rows *sql.Rows
+	if agentID != nil {
+		rows, err = db.Query(`
+			SELECT user_id, info, created_at
+			FROM trace
+			WHERE action = 'interview' AND user_id = ?
+			ORDER BY created_at DESC LIMIT ?`, *agentID, limit)
+	} else {
+		rows, err = db.Query(`
+			SELECT user_id, info, created_at
+			FROM trace
+			WHERE action = 'interview'
+			ORDER BY created_at DESC LIMIT ?`, limit)
+	}
+	if err != nil {
+		return []map[string]any{}, nil
+	}
+	defer rows.Close()
 
 	var out []map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
+	for rows.Next() {
+		var userID int
+		var infoJSON sql.NullString
+		var createdAt string
+		if err := rows.Scan(&userID, &infoJSON, &createdAt); err != nil {
+			continue
+		}
+		var info map[string]any
+		if infoJSON.Valid && strings.TrimSpace(infoJSON.String) != "" {
+			if err := json.Unmarshal([]byte(infoJSON.String), &info); err != nil {
+				info = map[string]any{"raw": infoJSON.String}
+			}
+		} else {
+			info = map[string]any{}
+		}
+		out = append(out, map[string]any{
+			"agent_id":   userID,
+			"response":   info["response"],
+			"prompt":     toString(info["prompt"]),
+			"timestamp":  createdAt,
+			"platform":   platform,
+		})
+	}
+	if err := rows.Err(); err != nil {
 		return []map[string]any{}, nil
 	}
 	return out, nil
@@ -399,7 +467,34 @@ func readJSONL(path string) ([]map[string]any, error) {
 		return nil, err
 	}
 	defer file.Close()
-	scanner := bufio.NewScanner(file)
+	events, err := artifactcontract.ParseActionsJSONL(file)
+	if err != nil {
+		_ = file.Close()
+		file, openErr := os.Open(path)
+		if openErr != nil {
+			return nil, openErr
+		}
+		defer file.Close()
+		scanner := bufio.NewScanner(file)
+		var out []map[string]any
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(line), &payload); err != nil {
+				continue
+			}
+			out = append(out, payload)
+		}
+		return out, scanner.Err()
+	}
+	formatted, err := artifactcontract.FormatActionsJSONL(events)
+	if err != nil {
+		return nil, err
+	}
+	scanner := bufio.NewScanner(strings.NewReader(string(formatted)))
 	var out []map[string]any
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -408,7 +503,7 @@ func readJSONL(path string) ([]map[string]any, error) {
 		}
 		var payload map[string]any
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
-			continue
+			return nil, err
 		}
 		out = append(out, payload)
 	}
@@ -420,6 +515,69 @@ func toString(value any) string {
 		return s
 	}
 	return ""
+}
+
+func runtimeStateFromRunState(runState map[string]any) map[string]any {
+	payload := map[string]any{
+		"simulation_id":           runState["simulation_id"],
+		"worker_protocol_version": runState["worker_protocol_version"],
+		"runner_status":           runState["runner_status"],
+		"status":                  runtimeStatusFromRunnerStatus(toString(runState["runner_status"])),
+		"current_round":           runState["current_round"],
+		"total_rounds":            runState["total_rounds"],
+		"simulated_hours":         runState["simulated_hours"],
+		"total_simulation_hours":  runState["total_simulation_hours"],
+		"progress_percent":        runState["progress_percent"],
+		"twitter_actions_count":   runState["twitter_actions_count"],
+		"reddit_actions_count":    runState["reddit_actions_count"],
+		"total_actions_count":     runState["total_actions_count"],
+		"started_at":              runState["started_at"],
+		"updated_at":              runState["updated_at"],
+		"completed_at":            runState["completed_at"],
+		"error":                   runState["error"],
+	}
+	for _, key := range []string{
+		"twitter_current_round",
+		"reddit_current_round",
+		"twitter_simulated_hours",
+		"reddit_simulated_hours",
+		"twitter_running",
+		"reddit_running",
+		"twitter_completed",
+		"reddit_completed",
+	} {
+		if value, ok := runState[key]; ok {
+			payload[key] = value
+		}
+	}
+	return payload
+}
+
+func runtimeStatusFromRunnerStatus(status string) string {
+	switch strings.TrimSpace(status) {
+	case "completed", "failed", "stopped":
+		return strings.TrimSpace(status)
+	case "running", "starting", "paused", "stopping":
+		return "running"
+	default:
+		return "idle"
+	}
+}
+
+func intValueAny(value any) int {
+	switch v := value.(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	case json.Number:
+		if parsed, err := v.Int64(); err == nil {
+			return int(parsed)
+		}
+	}
+	return 0
 }
 
 func (s *Store) readReportMeta(entry os.DirEntry) (map[string]any, error) {
