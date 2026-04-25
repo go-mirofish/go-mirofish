@@ -11,7 +11,14 @@ fi
 
 case "$mode" in
   package)
-    exec python3 scripts/release/package_gateway_release.py "$@"
+    if command -v python3 >/dev/null 2>&1; then
+      exec python3 scripts/release/package_gateway_release.py "$@"
+    elif command -v python >/dev/null 2>&1; then
+      exec python scripts/release/package_gateway_release.py "$@"
+    else
+      echo "[release] python not found; running gateway go test directly" >&2
+      (cd "$ROOT_DIR/gateway" && exec go test ./...)
+    fi
     ;;
   notes)
     exec node scripts/release/extract-release-notes.cjs "$@"
