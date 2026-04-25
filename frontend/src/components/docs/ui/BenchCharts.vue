@@ -16,10 +16,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { select } from 'd3-selection'
-import { scaleBand, scaleLinear } from 'd3-scale'
-import { max } from 'd3-array'
-import { axisBottom, axisLeft } from 'd3-axis'
+import { axisBottom, axisLeft, max, scaleBand, scaleLinear, select } from 'd3'
 
 const props = defineProps({
   data: { type: Object, default: () => ({}) },
