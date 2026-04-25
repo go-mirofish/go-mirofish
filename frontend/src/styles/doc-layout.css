@@ -39,7 +39,7 @@
   --doc-badge-ok-fg: #2e7d32;
   --doc-badge-pending-bg: #f3f4f6;
   --doc-badge-pending-fg: #6b7280;
-  /* D3 graph canvas (node/link text, strokes — follow data-theme) */
+  /* D3 graph canvas (node/link text, strokes; follow data-theme) */
   --doc-graph-node-label: var(--doc-text);
   --doc-graph-link-label: var(--doc-muted);
   --doc-graph-edge-pill-bg: color-mix(in srgb, var(--doc-surface) 88%, rgba(255, 255, 255, 0.95));
@@ -249,6 +249,8 @@ html[data-theme='dark'] .doc-workbench .switch-btn.active {
 
 .doc-workbench .panel-wrapper {
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   transition:
     width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
@@ -776,6 +778,79 @@ a.doc-github-stars {
 .doc-workbench .panel-wrapper.right {
   background: var(--doc-bg);
   color: var(--doc-text);
+}
+
+/* Workbench (split / graph): stack on narrow viewports; override inline panel widths from views */
+@media (max-width: 900px) {
+  .doc-workbench .content-area {
+    flex-direction: column;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .doc-workbench .panel-wrapper {
+    width: 100% !important;
+    height: auto !important;
+    min-height: min(50vh, 480px) !important;
+    max-height: none;
+    flex: 1 1 auto;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .doc-workbench .panel-wrapper.left {
+    border-right: none;
+    border-bottom: 1px solid var(--doc-border);
+    min-height: min(45vh, 360px) !important;
+  }
+  .doc-workbench .app-header {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 52px;
+    padding: 8px 12px;
+    row-gap: 6px;
+    column-gap: 8px;
+  }
+  .doc-workbench .header-left {
+    flex: 0 0 auto;
+  }
+  .doc-workbench .header-right {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+  .doc-workbench .header-center {
+    position: static;
+    transform: none;
+    order: 2;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+  .doc-workbench .brand {
+    font-size: 1rem;
+  }
+  .doc-workbench .view-switcher {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .doc-workbench .switch-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .doc-workbench .workflow-step,
+  .doc-workbench .status-indicator {
+    font-size: 12px;
+  }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .doc-workbench .step-name {
+    display: none;
+  }
+  .doc-workbench .header-right {
+    gap: 8px;
+  }
 }
 
 /* Documentation site (/docs) */
