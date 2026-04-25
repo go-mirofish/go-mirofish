@@ -5,7 +5,8 @@ SHELL := /bin/bash
 
 ROOT := $(shell cd "$(dir $(lastword $(MAKEFILE_LIST)))" && pwd)
 
-.PHONY: up up-release down logs bootstrap dev gateway gateway-build frontend frontend-build \
+# Rebuild + start: use `make up` (already runs docker compose up -d --build). Do not use `make up --build` — make will error.
+.PHONY: up up-release build down logs bootstrap dev gateway gateway-build frontend frontend-build \
         test test-all vet \
         benchmark benchmark-live benchmark-load benchmark-stress benchmark-soak benchmark-smoke \
         benchmark-run benchmark-stress-only benchmark-stress-heavy \
@@ -18,6 +19,10 @@ ROOT := $(shell cd "$(dir $(lastword $(MAKEFILE_LIST)))" && pwd)
 
 up:
 	@cd "$(ROOT)" && docker compose up -d --build
+
+# Build images only (no containers started). To rebuild and run the stack: `make up`.
+build:
+	@cd "$(ROOT)" && docker compose build
 
 # Optional all-in-one image (static UI in container). Default dev: `make up` + `npm run dev`.
 up-release:
