@@ -1543,4 +1543,41 @@ input:checked + .slider:before {
   padding: 3px 6px;
   font-size: 9px;
 }
+
+@media (max-width: 700px) {
+  .detail-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+  }
+
+  .graph-legend {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    max-width: none;
+  }
+
+  .legend-items {
+    max-width: none;
+  }
+
+  .edge-labels-toggle {
+    left: 8px;
+    right: 8px;
+    top: 52px;
+    max-width: none;
+  }
+
+  .panel-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .panel-title {
+    font-size: 13px;
+  }
+}
 </style>
