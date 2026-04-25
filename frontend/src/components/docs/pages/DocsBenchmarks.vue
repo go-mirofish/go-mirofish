@@ -69,7 +69,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { parseBundledBenchmarkPath } from '../lib/benchmarkRunLabel.js'
 import MetricCard from '../ui/MetricCard.vue'
@@ -79,8 +79,8 @@ import BenchmarkRunCombobox from '../ui/BenchmarkRunCombobox.vue'
 
 const { t } = useI18n()
 
-// Committed short-name JSON under docs/bundled-benchmarks/ (see docs/bundled-benchmarks/README.md).
-const modules = import.meta.glob('../../../../../docs/bundled-benchmarks/**/*.json', { eager: true })
+// Committed short-name JSON under @data → docs/bundled-benchmarks/ (see docs/bundled-benchmarks/README.md).
+const modules = import.meta.glob('@data/**/*.json', { eager: true })
 
 function normalizeData(mod) {
   if (mod && typeof mod === 'object' && 'default' in mod) return mod.default
@@ -88,9 +88,13 @@ function normalizeData(mod) {
 }
 
 function toBundledRel(vitePath) {
-  return (vitePath || '')
-    .replace(/.*[/\\]docs[/\\]bundled-benchmarks[/\\]/, 'bundled-benchmarks/')
-    .replace(/\\/g, '/')
+  const p = String(vitePath || '').replace(/\\/g, '/')
+  const fromDocs = p.replace(/.*\/docs\/bundled-benchmarks\//, 'bundled-benchmarks/')
+  if (fromDocs !== p) return fromDocs
+  const fromAlias = p.replace(/.*\/bundled-benchmarks\//, 'bundled-benchmarks/')
+  if (fromAlias !== p) return fromAlias
+  const base = p.split('/').pop() || p
+  return `bundled-benchmarks/${base}`
 }
 
 const runs = Object.entries(modules)
@@ -98,7 +102,8 @@ const runs = Object.entries(modules)
     const data = normalizeData(mod) ?? mod
     const rel = toBundledRel(path)
     const { display, search } = parseBundledBenchmarkPath(rel)
-    return { key: path, rel, label: display, search, data }
+    // Use stable repo-relative id (not Vite's absolute glob keys — those differ dev vs build / OS).
+    return { key: rel, rel, label: display, search, data }
   })
   .filter((r) => r.data && typeof r.data === 'object')
   .sort((a, b) => {
@@ -113,6 +118,20 @@ const runOptions = computed(() => runs.map((r) => ({ key: r.key, label: r.label,
 
 const defaultRunKey = runs.find((r) => r.rel.includes('live-stack'))?.key || runs[0]?.key || ''
 const selectedKey = ref(defaultRunKey)
+
+watch(
+  () => runOptions.value,
+  (opts) => {
+    const keys = opts.map((o) => o.key)
+    if (!keys.length) return
+    if (!keys.includes(selectedKey.value)) {
+      const preferred = runs.find((r) => r.rel.includes('live-stack'))?.key
+      selectedKey.value =
+        preferred && keys.includes(preferred) ? preferred : keys[0]
+    }
+  },
+  { immediate: true }
+)
 const data = computed(() => {
   const row = runs.find((r) => r.key === selectedKey.value)
   return row?.data && typeof row.data === 'object' ? row.data : {}
@@ -321,7 +340,7 @@ async function copyJson() {
   max-width: 40ch;
 }
 
-/* 6 metrics: 3×2 (row 1: P50–MAX, row 2: success–throughput) */
+/* 6 metrics: 3x2 (row 1: P50-MAX, row 2: success-throughput) */
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
