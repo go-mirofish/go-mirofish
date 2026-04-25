@@ -2,6 +2,7 @@ package report
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -137,8 +138,41 @@ func (s *Service) Generate(ctx context.Context, req ReportGenerateRequest, looku
 	}, nil
 }
 
+func outlineToLogMap(o Outline) map[string]any {
+	b, err := json.Marshal(o)
+	if err != nil {
+		return map[string]any{
+			"title":   o.Title,
+			"summary": o.Summary,
+			"sections": func() []any {
+				out := make([]any, 0, len(o.Sections))
+				for _, sp := range o.Sections {
+					out = append(out, map[string]any{"title": sp.Title, "description": sp.Description})
+				}
+				return out
+			}(),
+		}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]any{"title": o.Title, "summary": o.Summary}
+	}
+	return m
+}
+
 func (s *Service) run(reportID, simulationID, graphID, requirement, model string, exec provider.Executor) {
 	ctx := context.Background()
+	emit := func(entry map[string]any) { _ = s.store.AppendAgentLogLine(reportID, entry) }
+	_ = s.store.AppendConsoleLogLine(reportID, "Report job started; searching graph memory")
+
+	emit(map[string]any{
+		"action": "report_start",
+		"details": map[string]any{
+			"simulation_id":            simulationID,
+			"simulation_requirement": requirement,
+		},
+	})
+
 	factsResp, err := s.memory.SearchGraph(ctx, memory.SearchRequest{
 		Query:   requirement,
 		GraphID: graphID,
@@ -149,15 +183,30 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 		s.fail(reportID, err)
 		return
 	}
+	_ = s.store.AppendConsoleLogLine(reportID, fmt.Sprintf("Graph search returned %d fact line(s). Planning outline…", len(factsResp.Facts)))
 	if err := s.store.SaveProgress(reportID, NewProgress("planning", 20, "Planning report outline")); err != nil {
 		s.fail(reportID, err)
 		return
 	}
+	emit(map[string]any{
+		"action": "planning_start",
+		"details": map[string]any{
+			"message": "Planning report outline from graph evidence and scenario.",
+		},
+	})
 	outline, err := s.planner.Plan(ctx, requirement, factsResp.Facts)
 	if err != nil {
 		s.fail(reportID, err)
 		return
 	}
+	om := outlineToLogMap(outline)
+	emit(map[string]any{
+		"action": "planning_complete",
+		"details": map[string]any{
+			"message": "Outline ready — generating sections (LLM; may take a while on local models).",
+			"outline": om,
+		},
+	})
 	assembler := NewAssembler(sectionGenerator{executor: exec, model: model})
 	if err := s.store.SaveProgress(reportID, NewProgress("generating", 50, "Generating report sections")); err != nil {
 		s.fail(reportID, err)
@@ -169,6 +218,17 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 		return
 	}
 	for _, section := range sections {
+		emit(map[string]any{
+			"action":         "section_start",
+			"section_index":  section.Index,
+			"section_title":  section.Title,
+		})
+		emit(map[string]any{
+			"action":        "section_complete",
+			"section_index": section.Index,
+			"section_title": section.Title,
+			"details":       map[string]any{"content": section.Content},
+		})
 		if err := s.store.SaveSection(reportID, section.Index, section.Title, section.Content); err != nil {
 			s.fail(reportID, err)
 			return
@@ -195,6 +255,8 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 		s.fail(reportID, err)
 		return
 	}
+	emit(map[string]any{"action": "report_complete"})
+	_ = s.store.AppendConsoleLogLine(reportID, "Report completed successfully")
 	_ = s.store.SaveProgress(reportID, NewProgress("completed", 100, "Report generated"))
 }
 
@@ -400,6 +462,13 @@ func (s *Service) Chat(ctx context.Context, simulationID, message string, histor
 }
 
 func (s *Service) fail(reportID string, err error) {
+	_ = s.store.AppendConsoleLogLine(reportID, "ERROR: "+err.Error())
+	_ = s.store.AppendAgentLogLine(reportID, map[string]any{
+		"action": "report_failed",
+		"details": map[string]any{
+			"message": err.Error(),
+		},
+	})
 	meta, loadErr := s.store.LoadMeta(reportID)
 	if loadErr == nil {
 		meta.Status = "failed"
