@@ -45,6 +45,7 @@
           :loading="graphLoading"
           :currentPhase="5"
           :isSimulating="false"
+          :loadError="graphLoadError"
           @refresh="refreshGraph"
           @toggle-maximize="toggleMaximize('graph')"
         />
@@ -91,6 +92,7 @@ const currentReportId = ref(route.params.reportId)
 const simulationId = ref(null)
 const projectData = ref(null)
 const graphData = ref(null)
+const graphLoadError = ref('')
 const graphLoading = ref(false)
 const systemLogs = ref([])
 const currentStatus = ref('ready') // ready | processing | completed | error
@@ -180,14 +182,16 @@ const loadReportData = async () => {
 
 const loadGraph = async (graphId) => {
   graphLoading.value = true
-  
+  graphLoadError.value = ''
   try {
     const res = await getGraphData(graphId)
     if (res.success) {
       graphData.value = res.data
+      graphLoadError.value = ''
       addLog(t('log.graphDataLoadSuccess'))
     }
   } catch (err) {
+    graphLoadError.value = err.message || String(err)
     addLog(t('log.graphLoadFailed', { error: err.message }))
   } finally {
     graphLoading.value = false
