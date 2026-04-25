@@ -1,165 +1,106 @@
 import service, { requestWithRetry } from './index'
 
-/**
- * @param {Object} data - { project_id, graph_id?, enable_twitter?, enable_reddit? }
- */
-export const createSimulation = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/create', data), 3, 1000)
-}
+/** Create a simulation record for a completed graph project. */
+export const createSimulation = (data) =>
+  requestWithRetry(() => service.post('/api/simulation/create', data), 3, 1000)
 
 /**
- * @param {Object} data - { simulation_id, entity_types?, use_llm_for_profiles?, parallel_profile_count?, force_regenerate? }
+ * Prepare a simulation: load entities from graph, generate profiles, write simulation_config.json.
+ * Starts async; poll via getPrepareStatus.
  */
-export const prepareSimulation = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/prepare', data), 3, 1000)
-}
+export const prepareSimulation = (data) =>
+  requestWithRetry(() => service.post('/api/simulation/prepare', data), 2, 2000)
 
 /**
- * @param {Object} data - { task_id?, simulation_id? }
+ * Poll prepare-task status.
+ * @param {{ task_id?: string, simulation_id?: string }} data
  */
-export const getPrepareStatus = (data) => {
-  return service.post('/api/simulation/prepare/status', data)
-}
+export const getPrepareStatus = (data) =>
+  service({ url: '/api/simulation/prepare/status', method: 'post', data, timeout: 10000 })
 
-/**
- * @param {string} simulationId
- */
-export const getSimulation = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}`)
-}
+/** Get the full simulation state (control_state.json). */
+export const getSimulation = (simulationId) =>
+  service({ url: `/api/simulation/${simulationId}`, method: 'get', timeout: 10000 })
 
-/**
- * @param {string} simulationId
- * @param {string} platform - 'reddit' | 'twitter'
- */
-export const getSimulationProfiles = (simulationId, platform = 'reddit') => {
-  return service.get(`/api/simulation/${simulationId}/profiles`, { params: { platform } })
-}
+/** Get agent profiles for the simulation. */
+export const getSimulationProfiles = (simulationId, platform = 'reddit') =>
+  service({ url: `/api/simulation/${simulationId}/profiles`, method: 'get', params: { platform }, timeout: 15000 })
 
-/**
- * @param {string} simulationId
- * @param {string} platform - 'reddit' | 'twitter'
- */
-export const getSimulationProfilesRealtime = (simulationId, platform = 'reddit') => {
-  return service.get(`/api/simulation/${simulationId}/profiles/realtime`, { params: { platform } })
-}
+/** Get real-time agent profiles (includes live round data). */
+export const getSimulationProfilesRealtime = (simulationId, platform = 'reddit') =>
+  service({ url: `/api/simulation/${simulationId}/profiles/realtime`, method: 'get', params: { platform }, timeout: 15000 })
 
-/**
- * @param {string} simulationId
- */
-export const getSimulationConfig = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/config`)
-}
+/** Get the generated simulation config JSON. */
+export const getSimulationConfig = (simulationId) =>
+  service({ url: `/api/simulation/${simulationId}/config`, method: 'get', timeout: 10000 })
 
-/**
- * @param {string} simulationId
- */
-export const getSimulationConfigRealtime = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/config/realtime`)
-}
+/** Get real-time simulation config with live stats overlaid. */
+export const getSimulationConfigRealtime = (simulationId) =>
+  service({ url: `/api/simulation/${simulationId}/config/realtime`, method: 'get', timeout: 10000 })
 
-/**
- */
-export const listSimulations = (projectId) => {
-  const params = projectId ? { project_id: projectId } : {}
-  return service.get('/api/simulation/list', { params })
-}
+/** List simulations, optionally filtered by project. */
+export const listSimulations = (projectId) =>
+  service({ url: '/api/simulation/list', method: 'get', params: projectId ? { project_id: projectId } : {}, timeout: 10000 })
 
-/**
- * @param {Object} data - { simulation_id, platform?, max_rounds?, enable_graph_memory_update? }
- */
-export const startSimulation = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/start', data), 3, 1000)
-}
+/** Start a simulation run. */
+export const startSimulation = (data) =>
+  requestWithRetry(() => service.post('/api/simulation/start', data), 2, 2000)
 
-/**
- * @param {Object} data - { simulation_id }
- */
-export const stopSimulation = (data) => {
-  return service.post('/api/simulation/stop', data)
-}
+/** Stop a running simulation. */
+export const stopSimulation = (data) =>
+  service({ url: '/api/simulation/stop', method: 'post', data, timeout: 15000 })
 
-/**
- * @param {Object} data - { simulation_id }
- */
-export const deleteSimulation = (data) => {
-  return service.post('/api/simulation/delete', data)
-}
+/** Delete a simulation and its artifacts. */
+export const deleteSimulation = (data) =>
+  service({ url: '/api/simulation/delete', method: 'post', data, timeout: 15000 })
 
-/**
- * @param {string} simulationId
- */
-export const getRunStatus = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/run-status`)
-}
+/** Get the lightweight run-status for a simulation (current round, progress %). */
+export const getRunStatus = (simulationId) =>
+  service({ url: `/api/simulation/${simulationId}/run-status`, method: 'get', timeout: 8000 })
 
-/**
- * @param {string} simulationId
- */
-export const getRunStatusDetail = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/run-status/detail`)
-}
+/** Get detailed run-status including per-platform action counts. */
+export const getRunStatusDetail = (simulationId) =>
+  service({ url: `/api/simulation/${simulationId}/run-status/detail`, method: 'get', timeout: 10000 })
 
-/**
- * @param {string} simulationId
- * @param {string} platform - 'reddit' | 'twitter'
- */
-export const getSimulationPosts = (simulationId, platform = 'reddit', limit = 50, offset = 0) => {
-  return service.get(`/api/simulation/${simulationId}/posts`, {
-    params: { platform, limit, offset }
-  })
-}
+/** Get simulation posts (reddit or twitter). */
+export const getSimulationPosts = (simulationId, platform = 'reddit', limit = 50, offset = 0) =>
+  service({ url: `/api/simulation/${simulationId}/posts`, method: 'get', params: { platform, limit, offset }, timeout: 15000 })
 
-/**
- * @param {string} simulationId
- */
+/** Get simulation comments (reddit or twitter). */
+export const getSimulationComments = (simulationId, platform = 'reddit', limit = 50, offset = 0) =>
+  service({ url: `/api/simulation/${simulationId}/comments`, method: 'get', params: { platform, limit, offset }, timeout: 15000 })
+
+/** Get per-round timeline for a simulation. */
 export const getSimulationTimeline = (simulationId, startRound = 0, endRound = null) => {
   const params = { start_round: startRound }
-  if (endRound !== null) {
-    params.end_round = endRound
-  }
-  return service.get(`/api/simulation/${simulationId}/timeline`, { params })
+  if (endRound !== null) params.end_round = endRound
+  return service({ url: `/api/simulation/${simulationId}/timeline`, method: 'get', params, timeout: 15000 })
 }
 
-/**
- * @param {string} simulationId
- */
-export const getAgentStats = (simulationId) => {
-  return service.get(`/api/simulation/${simulationId}/agent-stats`)
-}
+/** Get per-agent action stats for a simulation. */
+export const getAgentStats = (simulationId) =>
+  service({ url: `/api/simulation/${simulationId}/agent-stats`, method: 'get', timeout: 15000 })
 
-/**
- * @param {string} simulationId
- * @param {Object} params - { limit, offset, platform, agent_id, round_num }
- */
-export const getSimulationActions = (simulationId, params = {}) => {
-  return service.get(`/api/simulation/${simulationId}/actions`, { params })
-}
+/** Get paginated action log entries. */
+export const getSimulationActions = (simulationId, params = {}) =>
+  service({ url: `/api/simulation/${simulationId}/actions`, method: 'get', params, timeout: 15000 })
 
-/**
- * @param {Object} data - { simulation_id, timeout? }
- */
-export const closeSimulationEnv = (data) => {
-  return service.post('/api/simulation/close-env', data)
-}
+/** Close/shutdown a simulation's worker environment. */
+export const closeSimulationEnv = (data) =>
+  service({ url: '/api/simulation/close-env', method: 'post', data, timeout: 30000 })
 
-/**
- * @param {Object} data - { simulation_id }
- */
-export const getEnvStatus = (data) => {
-  return service.post('/api/simulation/env-status', data)
-}
+/** Get the current env/worker health status. */
+export const getEnvStatus = (data) =>
+  service({ url: '/api/simulation/env-status', method: 'post', data, timeout: 10000 })
 
-/**
- * @param {Object} data - { simulation_id, interviews: [{ agent_id, prompt }] }
- */
-export const interviewAgents = (data) => {
-  return requestWithRetry(() => service.post('/api/simulation/interview/batch', data), 3, 1000)
-}
+/** Batch-interview a set of simulation agents. */
+export const interviewAgents = (data) =>
+  requestWithRetry(() => service.post('/api/simulation/interview/batch', data), 2, 2000)
 
-/**
- */
-export const getSimulationHistory = (limit = 20) => {
-  return service.get('/api/simulation/history', { params: { limit } })
-}
+/** Get recent simulations (history view). */
+export const getSimulationHistory = (limit = 20) =>
+  service({ url: '/api/simulation/history', method: 'get', params: { limit }, timeout: 10000 })
 
+/** Generate agent profiles for a specific graph (standalone — not tied to prepare). */
+export const generateProfiles = (data) =>
+  service({ url: '/api/simulation/generate-profiles', method: 'post', data, timeout: 60000 })
