@@ -10,10 +10,10 @@
 [![GitHub Sponsors](https://img.shields.io/github/sponsors/justinedevs?style=flat-square&logo=github&label=Sponsor)](https://github.com/sponsors/go-mirofish)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-ffdd00?style=flat-square&logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/justinedevs)
 [![X](https://img.shields.io/badge/X-Follow-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/trader2g)
+<a href="https://www.producthunt.com/products/go-mirofish?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-go-mirofish" target="_blank" rel="noopener noreferrer"><img alt="go-mirofish - Fast local Go AI swarm engine – predict anything with agents | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1132196&amp;theme=light&amp;t=1777125819933"></a>
+Upload documents, describe what you want to predict, and get a full simulation report **on your laptop**.
 
 </div>
-
-Upload documents, describe what you want to predict, and get a full simulation report **on your laptop**.
 
 **Public preview (Vercel):** [gomirofish.vercel.app](https://gomirofish.vercel.app). Custom domain **go.mirofish.ai** is pending (subdomain access with the domain holder is still in progress).
 
