@@ -23,7 +23,16 @@ const routes = [
     name: 'DocsSection',
     component: DocsView,
     beforeEnter: (to) => {
-      const valid = ['installation', 'ollama', 'providers', 'benchmark', 'showcase', 'contributing', 'roadmap']
+      const valid = [
+        'installation',
+        'ollama',
+        'providers',
+        'benchmark',
+        'showcase',
+        'contributing',
+        'roadmap',
+        'future-consideration',
+      ]
       if (!valid.includes(to.params.section)) {
         return { name: 'Docs' }
       }
