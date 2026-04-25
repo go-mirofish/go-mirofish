@@ -51,29 +51,21 @@
                 <div v-if="generatedSections[idx + 1]" class="generated-content" v-html="renderMarkdown(generatedSections[idx + 1])"></div>
                 
                 <!-- Loading State -->
-                <div v-else-if="currentSectionIndex === idx + 1" class="loading-state">
-                  <div class="loading-icon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <circle cx="12" cy="12" r="10" stroke-width="4" stroke="var(--doc-border)"></circle>
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke-width="4" stroke="var(--doc-muted)" stroke-linecap="round"></path>
-                    </svg>
+                <div v-else-if="currentSectionIndex === idx + 1" class="section-loading">
+                  <p class="section-loading__label">{{ $t('step4.generatingSection', { title: section.title }) }}</p>
+                  <p class="section-loading__hint">{{ $t('step4.sectionDraftHint') }}</p>
+                  <div class="section-loading__skeleton" aria-hidden="true">
+                    <span class="sec-sk sec-sk--a" />
+                    <span class="sec-sk sec-sk--b" />
+                    <span class="sec-sk sec-sk--c" />
                   </div>
-                  <span class="loading-text">{{ $t('step4.generatingSection', { title: section.title }) }}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Waiting State -->
-        <div v-if="!reportOutline" class="waiting-placeholder">
-          <div class="waiting-animation">
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-            <div class="waiting-ring"></div>
-          </div>
-          <span class="waiting-text">Waiting for Report Agent...</span>
-        </div>
+        <ReportPreparingPanel v-if="!reportOutline" />
       </div>
 
       <!-- RIGHT PANEL: Workflow Timeline -->
@@ -363,8 +355,19 @@
 
           <!-- Empty State -->
           <div v-if="agentLogs.length === 0 && !isComplete" class="workflow-empty">
-            <div class="empty-pulse"></div>
-            <span>Waiting for agent activity...</span>
+            <div class="workflow-empty__text">
+              <span class="workflow-empty__title">{{ $t('step4.reportTimelineEmptyTitle') }}</span>
+              <p class="workflow-empty__hint">{{ $t('step4.reportTimelineEmptyHint') }}</p>
+            </div>
+            <div class="timeline-skeleton" aria-hidden="true">
+              <div v-for="n in 4" :key="n" class="timeline-skeleton__row">
+                <span class="timeline-skeleton__rail" />
+                <div class="timeline-skeleton__body">
+                  <span class="ts-line ts-line--meta" />
+                  <span class="ts-line" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -390,6 +393,7 @@ import { ref, computed, watch, onMounted, onUnmounted, nextTick, h, reactive } f
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { getAgentLog, getConsoleLog } from '../api/report'
+import ReportPreparingPanel from './ReportPreparingPanel.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -2432,29 +2436,60 @@ watch(() => props.reportId, (newId) => {
   color: var(--doc-text);
 }
 
-/* Loading State */
-.loading-state {
+/* Section generating (skeleton) */
+.section-loading {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 6px;
   color: var(--doc-muted);
-  font-size: 14px;
+}
+
+.section-loading__label {
+  margin: 0;
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 15px;
+  color: var(--doc-text);
+  opacity: 0.9;
+}
+
+.section-loading__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--doc-muted);
+  max-width: 40em;
+}
+
+.section-loading__skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin-top: 4px;
 }
 
-.loading-icon {
-  width: 18px;
-  height: 18px;
-  animation: spin 1s linear infinite;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.sec-sk {
+  display: block;
+  height: 9px;
+  border-radius: 4px;
+  background: linear-gradient(
+    100deg,
+    var(--doc-border) 0%,
+    color-mix(in srgb, var(--doc-text) 10%, var(--doc-border)) 50%,
+    var(--doc-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: sec-sk-shimmer 1.3s ease-in-out infinite;
 }
 
-.loading-text {
-  font-family: 'Times New Roman', Times, serif;
-  font-size: 15px;
-  color: var(--doc-muted);
+.sec-sk--a { width: 100%; }
+.sec-sk--b { width: 92%; opacity: 0.88; }
+.sec-sk--c { width: 64%; height: 8px; opacity: 0.75; }
+
+@keyframes sec-sk-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 .cursor-blink {
@@ -2469,10 +2504,6 @@ watch(() => props.reportId, (newId) => {
 @keyframes blink {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 0; }
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* Content Styles Override for this view */
@@ -2500,50 +2531,6 @@ watch(() => props.reportId, (newId) => {
 .slide-content-enter-to,
 .slide-content-leave-from {
   opacity: 1;
-}
-
-/* Waiting Placeholder */
-.waiting-placeholder {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 40px;
-  color: var(--doc-muted);
-}
-
-.waiting-animation {
-  position: relative;
-  width: 48px;
-  height: 48px;
-}
-
-.waiting-ring {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border: 2px solid var(--doc-border);
-  border-radius: 50%;
-  animation: ripple 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.waiting-ring:nth-child(2) {
-  animation-delay: 0.4s;
-}
-
-.waiting-ring:nth-child(3) {
-  animation-delay: 0.8s;
-}
-
-@keyframes ripple {
-  0% { transform: scale(0.5); opacity: 1; }
-  100% { transform: scale(2); opacity: 0; }
-}
-
-.waiting-text {
-  font-size: 14px;
 }
 
 /* Right Panel */
@@ -3340,29 +3327,106 @@ watch(() => props.reportId, (newId) => {
   transform: translateX(4px);
 }
 
-/* Workflow Empty */
+/* Workflow empty (pre-timeline) */
 .workflow-empty {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
+  align-items: stretch;
+  gap: 20px;
+  padding: 24px 20px 48px;
   color: var(--doc-muted);
   font-size: 13px;
 }
 
-.empty-pulse {
-  width: 24px;
-  height: 24px;
-  background: var(--doc-border);
-  border-radius: 50%;
-  margin-bottom: 16px;
-  animation: pulse-ring 1.5s infinite;
+.workflow-empty__text {
+  text-align: left;
+  max-width: 40em;
+  margin: 0 auto;
+  width: 100%;
 }
 
-@keyframes pulse-ring {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.2); opacity: 0.5; }
+.workflow-empty__title {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--doc-text);
+  margin-bottom: 8px;
+}
+
+.workflow-empty__hint {
+  margin: 0;
+  line-height: 1.5;
+  font-size: 12px;
+  color: var(--doc-muted);
+}
+
+.timeline-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 8px;
+  max-width: 100%;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.timeline-skeleton__row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 48px;
+}
+
+.timeline-skeleton__rail {
+  width: 2px;
+  flex-shrink: 0;
+  border-radius: 1px;
+  background: var(--doc-border);
+  position: relative;
+  margin-top: 6px;
+  margin-left: 5px;
+  min-height: 100%;
+}
+
+.timeline-skeleton__row:last-child .timeline-skeleton__rail {
+  min-height: 20px;
+}
+
+.timeline-skeleton__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 16px;
+  min-width: 0;
+}
+
+.ts-line {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  width: 100%;
+  max-width: 100%;
+  background: linear-gradient(
+    100deg,
+    var(--doc-border) 0%,
+    color-mix(in srgb, var(--doc-text) 8%, var(--doc-border)) 50%,
+    var(--doc-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: ts-shimmer 1.3s ease-in-out infinite;
+}
+
+.ts-line--meta {
+  width: 35%;
+  max-width: 140px;
+  height: 7px;
+  opacity: 0.85;
+}
+
+@keyframes ts-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
 }
 
 /* Timeline Transitions */
