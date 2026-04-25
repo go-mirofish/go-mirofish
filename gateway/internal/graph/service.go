@@ -382,10 +382,16 @@ func FilterEntitiesFromGraphData(graphData map[string]any, entityTypes []string,
 				customLabels = append(customLabels, label)
 			}
 		}
-		if len(customLabels) == 0 {
+		var entityType string
+		if len(customLabels) > 0 {
+			entityType = customLabels[0]
+		} else if len(allowed) == 0 && len(labels) > 0 {
+			// Zep (and other backends) often label nodes with only the generic "Entity" type.
+			// When the caller does not pass entity_types, still surface these so prepare/sim can run.
+			entityType = labels[0]
+		} else {
 			continue
 		}
-		entityType := customLabels[0]
 		if len(allowed) > 0 && !allowed[entityType] {
 			continue
 		}
