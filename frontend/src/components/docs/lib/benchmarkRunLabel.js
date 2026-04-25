@@ -1,4 +1,4 @@
-/** Display titles for first segment of bundled benchmark filenames (`scenario__profile__variant.json` — `__` avoids ambiguity with hyphens in scenario slugs). */
+/** Display titles for first segment of bundled benchmark filenames (`scenario__profile__variant.json`). Double underscore avoids ambiguity with hyphens in scenario slugs. */
 export const BENCHMARK_SCENARIO_LABELS = {
   'live-stack': 'Live stack report',
   'defi-stress': 'DeFi sentiment',
