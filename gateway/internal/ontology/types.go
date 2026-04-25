@@ -3,7 +3,9 @@ package ontology
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
+	"fmt"
 )
 
 //go:embed schemas/*.json
@@ -15,9 +17,35 @@ type EntityAttribute struct {
 	Description string `json:"description" validate:"required"`
 }
 
+// SourceTarget tolerates both {"source":"X","target":"Y"} and ["X","Y"] from LLMs.
 type SourceTarget struct {
 	Source string `json:"source" validate:"required"`
 	Target string `json:"target" validate:"required"`
+}
+
+func (st *SourceTarget) UnmarshalJSON(data []byte) error {
+	// Try object form first.
+	type plain struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	var p plain
+	if err := json.Unmarshal(data, &p); err == nil {
+		st.Source = p.Source
+		st.Target = p.Target
+		return nil
+	}
+	// Try 2-element array form: ["Source","Target"].
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err != nil {
+		return fmt.Errorf("source_target: expected object or 2-element array, got: %s", string(data))
+	}
+	if len(arr) < 2 {
+		return fmt.Errorf("source_target: array must have at least 2 elements, got %d", len(arr))
+	}
+	st.Source = arr[0]
+	st.Target = arr[1]
+	return nil
 }
 
 type EntityType struct {
@@ -27,11 +55,47 @@ type EntityType struct {
 	Examples    []string          `json:"examples,omitempty"`
 }
 
+// EdgeType tolerates source_targets as either []object or []array.
+// It also accepts source_targets as a single object (not array) by wrapping it.
 type EdgeType struct {
 	Name          string            `json:"name" validate:"required"`
 	Description   string            `json:"description" validate:"required"`
 	Attributes    []EntityAttribute `json:"attributes,omitempty"`
 	SourceTargets []SourceTarget    `json:"source_targets" validate:"required"`
+}
+
+func (et *EdgeType) UnmarshalJSON(data []byte) error {
+	type edgePlain struct {
+		Name          string            `json:"name"`
+		Description   string            `json:"description"`
+		Attributes    []EntityAttribute `json:"attributes"`
+		SourceTargets json.RawMessage   `json:"source_targets"`
+	}
+	var p edgePlain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	et.Name = p.Name
+	et.Description = p.Description
+	et.Attributes = p.Attributes
+
+	if len(p.SourceTargets) == 0 || string(p.SourceTargets) == "null" {
+		return nil
+	}
+
+	// Try as array first.
+	var arr []SourceTarget
+	if err := json.Unmarshal(p.SourceTargets, &arr); err == nil {
+		et.SourceTargets = arr
+		return nil
+	}
+	// Try as single object.
+	var single SourceTarget
+	if err := json.Unmarshal(p.SourceTargets, &single); err == nil {
+		et.SourceTargets = []SourceTarget{single}
+		return nil
+	}
+	return fmt.Errorf("edge source_targets: cannot parse %s", string(p.SourceTargets))
 }
 
 type Ontology struct {

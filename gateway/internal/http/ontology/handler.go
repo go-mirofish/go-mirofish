@@ -1,6 +1,7 @@
 package ontologyhttp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -39,13 +40,35 @@ type uploadFile struct {
 	text             string
 }
 
+const maxOntologyRequestBody = 64 << 20
+
 func (h *Handler) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if shouldProxy(r) {
-		h.proxy(w, r)
+	// Slurp the body so ParseMultipartForm and downstream logic never see an empty
+	// body (axios sometimes sends multipart without a boundary; we also need a seekable
+	// payload for any future inspection). The reverse proxy path was removed: the Flask
+	// backend does not implement this route, and pre-parsing for "proxy PDF" drained the
+	// body and produced ContentLength/empty-body 502s.
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxOntologyRequestBody+1))
+	if err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "read request body: " + err.Error()})
+		return
+	}
+	_ = r.Body.Close()
+	if len(body) > maxOntologyRequestBody {
+		h.writeJSON(w, http.StatusRequestEntityTooLarge, map[string]any{"success": false, "error": "request body too large"})
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	r.ContentLength = int64(len(body))
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		h.writeJSON(w, http.StatusBadRequest, map[string]any{
+			"success": false,
+			"error":   "Invalid multipart form (check Content-Type includes boundary=...; do not set Content-Type manually for FormData): " + err.Error(),
+		})
 		return
 	}
 	projectName := strings.TrimSpace(r.FormValue("project_name"))
@@ -113,27 +136,10 @@ func (h *Handler) HandleGenerate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func shouldProxy(r *http.Request) bool {
-	contentType := r.Header.Get("Content-Type")
-	if !strings.Contains(contentType, "multipart/form-data") {
-		return true
-	}
-	if err := r.ParseMultipartForm(64 << 20); err != nil {
-		return true
-	}
-	files := r.MultipartForm.File["files"]
-	if len(files) == 0 {
-		return false
-	}
-	for _, file := range files {
-		if strings.ToLower(filepath.Ext(file.Filename)) == ".pdf" {
-			return true
-		}
-	}
-	return false
-}
-
 func (h *Handler) collectFiles(r *http.Request) ([]uploadFile, string, error) {
+	if r.MultipartForm == nil {
+		return nil, "", fmt.Errorf("multipart form not parsed")
+	}
 	files := r.MultipartForm.File["files"]
 	if len(files) == 0 {
 		return nil, "", fmt.Errorf("file upload is required")
@@ -150,8 +156,10 @@ func (h *Handler) collectFiles(r *http.Request) ([]uploadFile, string, error) {
 	var results []uploadFile
 	for _, header := range files {
 		ext := strings.ToLower(filepath.Ext(header.Filename))
-		if ext != ".txt" && ext != ".md" && ext != ".markdown" {
-			return nil, "", fmt.Errorf("unsupported file format: %s", ext)
+		allowed := ext == ".txt" || ext == ".md" || ext == ".markdown" || ext == ".pdf" ||
+			ext == ".docx" || ext == ".pptx"
+		if !allowed {
+			return nil, "", fmt.Errorf("unsupported file format: %s (supported: .txt, .md, .markdown, .pdf, .docx, .pptx)", ext)
 		}
 		src, err := header.Open()
 		if err != nil {
@@ -162,7 +170,32 @@ func (h *Handler) collectFiles(r *http.Request) ([]uploadFile, string, error) {
 		if err != nil {
 			return nil, "", err
 		}
-		text := preprocessText(string(raw))
+		var text string
+		switch ext {
+		case ".pdf":
+			pdfText, err := ExtractPDFForOntology(raw)
+			if err != nil {
+				return nil, "", fmt.Errorf("pdf %q: %w", header.Filename, err)
+			}
+			text = preprocessText(pdfText)
+		case ".docx":
+			s, err := extractDOCXText(raw)
+			if err != nil {
+				return nil, "", fmt.Errorf("docx %q: %w", header.Filename, err)
+			}
+			text = preprocessText(s)
+		case ".pptx":
+			s, err := extractPPTXText(raw)
+			if err != nil {
+				return nil, "", fmt.Errorf("pptx %q: %w", header.Filename, err)
+			}
+			text = preprocessText(s)
+		default:
+			text = preprocessText(string(raw))
+		}
+		if strings.TrimSpace(text) == "" {
+			return nil, "", fmt.Errorf("no extractable text in %q after preprocessing (empty or unsupported content)", header.Filename)
+		}
 		results = append(results, uploadFile{
 			originalFilename: header.Filename,
 			size:             int64(len(raw)),
@@ -274,7 +307,7 @@ func (p providerAdapter) Execute(ctx context.Context, systemPrompt string, userP
 			{Role: intprovider.RoleUser, Content: userPrompt},
 		},
 		Temperature:    0,
-		MaxTokens:      8192,
+		MaxTokens:      16384,
 		ResponseFormat: &intprovider.ResponseFormat{Type: intprovider.ResponseFormatJSONObject},
 	})
 	if err != nil {

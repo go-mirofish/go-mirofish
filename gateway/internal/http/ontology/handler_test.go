@@ -30,7 +30,7 @@ func (e execStub) Execute(ctx context.Context, req intprovider.ProviderRequest) 
 	return intprovider.ProviderResponse{Content: e.content, StatusCode: 200, Model: req.Model, Provider: "stub"}, nil
 }
 
-func TestHandleGenerateValidationAndProxy(t *testing.T) {
+func TestHandleGenerateValidation(t *testing.T) {
 	store := localfs.New(filepath.Join(t.TempDir(), "projects"), "", "", "", "")
 	var proxied bool
 	handler := NewHandler(store, func(w http.ResponseWriter, r *http.Request) {
@@ -53,19 +53,31 @@ func TestHandleGenerateValidationAndProxy(t *testing.T) {
 		}
 	})
 
-	t.Run("pdf proxies", func(t *testing.T) {
+	t.Run("pdf_handled_in_gateway", func(t *testing.T) {
+		prevPDF := ExtractPDFForOntology
+		ExtractPDFForOntology = func(_ []byte) (string, error) { return "Extracted PDF body for tests", nil }
+		t.Cleanup(func() { ExtractPDFForOntology = prevPDF })
+		t.Setenv("LLM_API_KEY", "k")
+		t.Setenv("LLM_MODEL_NAME", "m")
+		t.Setenv("LLM_BASE_URL", "http://stub")
+		prevEx := newExecutor
+		newExecutor = func(cfg intprovider.Config) intprovider.Executor {
+			return execStub{content: `{"entity_types":[{"name":"person","description":"Person","attributes":[{"name":"name","type":"text","description":"Name"}],"examples":["Alice"]}],"edge_types":[{"name":"works_at","description":"Employment","attributes":[],"source_targets":[{"source":"Person","target":"Organization"}]}],"analysis_summary":"ok"}`}
+		}
+		t.Cleanup(func() { newExecutor = prevEx })
+
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 		_ = writer.WriteField("simulation_requirement", "test")
 		part, _ := writer.CreateFormFile("files", "seed.pdf")
-		_, _ = part.Write([]byte("%PDF"))
+		_, _ = part.Write([]byte("%PDF-fake"))
 		_ = writer.Close()
 		req := httptest.NewRequest(http.MethodPost, "/api/graph/ontology/generate", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		rec := httptest.NewRecorder()
 		handler.HandleGenerate(rec, req)
-		if rec.Code != http.StatusOK || !proxied {
-			t.Fatalf("expected proxied 200, got %d proxied=%v", rec.Code, proxied)
+		if rec.Code != http.StatusOK || proxied {
+			t.Fatalf("expected 200 in gateway, proxied=%v, code=%d body=%s", proxied, rec.Code, rec.Body.String())
 		}
 	})
 }

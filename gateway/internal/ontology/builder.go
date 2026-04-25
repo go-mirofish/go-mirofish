@@ -24,23 +24,7 @@ func NewBuilder(gen ContentGenerator) *OntologyBuilder {
 }
 
 func (b *OntologyBuilder) Build(ctx context.Context, input BuildInput) (Ontology, error) {
-	if err := b.validate.Struct(input); err != nil {
-		return Ontology{}, fmt.Errorf("builder.Build: %w", ErrValidation)
-	}
-	raw, err := b.gen.Execute(ctx, ontologySystemPrompt, b.prompt(input))
-	if err != nil {
-		return Ontology{}, err
-	}
-	raw = sanitizeJSON(raw)
-	var out Ontology
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
-		return Ontology{}, err
-	}
-	out = normalizeOntology(out)
-	if err := b.validate.Struct(out); err != nil {
-		return Ontology{}, fmt.Errorf("builder.Build: %w", ErrValidation)
-	}
-	return out, nil
+	return b.buildWithDetails(ctx, input)
 }
 
 func (b *OntologyBuilder) prompt(input BuildInput) string {
@@ -56,20 +40,82 @@ func (b *OntologyBuilder) prompt(input BuildInput) string {
 	return sb.String()
 }
 
-var ontologySystemPrompt = `Return compact JSON with entity_types, edge_types, and analysis_summary.
-Rules:
-- exactly 10 entity types
-- last 2 must be Person and Organization
-- first 8 must be concrete actor types
-- 6-10 relationship types
-- relationship names must be UPPER_SNAKE_CASE
-- source_targets per relationship must not exceed 10`
+var ontologySystemPrompt = `Return ONLY a compact JSON object. No prose, no code fences.
+
+Required top-level fields:
+  entity_types  – array of exactly 10 objects
+  edge_types    – array of 6-10 objects
+  analysis_summary – string
+
+Each entity_type object must have:
+  name        – PascalCase string
+  description – string
+  attributes  – array of {name, type, description} objects (type is "string", "int", etc.)
+
+Rules for entity_types:
+  - exactly 10 items total
+  - first 8: concrete actor types specific to the scenario
+  - last 2 must be exactly "Person" and "Organization" (in that order)
+
+Each edge_type object must have:
+  name           – UPPER_SNAKE_CASE string
+  description    – string
+  source_targets – array of {"source":"EntityName","target":"EntityName"} objects (NOT arrays, NOT strings)
+  attributes     – optional array of {name, type, description} objects
+
+Rules for edge_types:
+  - 6-10 items total
+  - source_targets elements MUST be objects with "source" and "target" string fields
+  - at most 10 source_targets per edge_type
+
+Output ONLY valid JSON. No explanation. No markdown. No code blocks.`
 
 func sanitizeJSON(text string) string {
 	text = strings.TrimSpace(text)
-	text = regexp.MustCompile("(?i)^```(?:json)?\\s*").ReplaceAllString(text, "")
+	// Strip thinking-model <think>...</think> blocks (Gemini 2.5, DeepSeek, etc.)
+	text = regexp.MustCompile(`(?si)<think>.*?</think>`).ReplaceAllString(text, "")
+	// Strip markdown code fences.
+	text = regexp.MustCompile(`(?i)^` + "```" + `(?:json)?\s*`).ReplaceAllString(text, "")
 	text = regexp.MustCompile("(?m)\\s*```\\s*$").ReplaceAllString(text, "")
+	text = strings.TrimSpace(text)
+	// Extract outermost JSON object if there is surrounding prose.
+	if first := strings.Index(text, "{"); first >= 0 {
+		if last := strings.LastIndex(text, "}"); last > first {
+			text = text[first : last+1]
+		}
+	}
 	return strings.TrimSpace(text)
+}
+
+func (b *OntologyBuilder) buildWithDetails(ctx context.Context, input BuildInput) (Ontology, error) {
+	if err := b.validate.Struct(input); err != nil {
+		return Ontology{}, fmt.Errorf("builder.Build: %w", ErrValidation)
+	}
+	raw, err := b.gen.Execute(ctx, ontologySystemPrompt, b.prompt(input))
+	if err != nil {
+		return Ontology{}, err
+	}
+	sanitized := sanitizeJSON(raw)
+	if sanitized == "" || sanitized == "<nil>" {
+		return Ontology{}, fmt.Errorf("ontology LLM returned empty or unusable content (raw len=%d); if using OpenAI-compatible APIs, ensure the model supports response_format json_object and returns a message (not null content)", len(raw))
+	}
+	var out Ontology
+	if err := json.Unmarshal([]byte(sanitized), &out); err != nil {
+		preview := sanitized
+		if len(preview) > 300 {
+			preview = preview[:300] + "…"
+		}
+		trim := strings.TrimSpace(sanitized)
+		if len(trim) > 0 && trim[0] == '<' {
+			return Ontology{}, fmt.Errorf("ontology model returned non-JSON (HTML/XML?); check LLM_BASE_URL, key, and model — %w; preview: %s", err, preview)
+		}
+		return Ontology{}, fmt.Errorf("ontology JSON parse failed: %w — raw preview: %s", err, preview)
+	}
+	out = normalizeOntology(out)
+	if err := b.validate.Struct(out); err != nil {
+		return Ontology{}, fmt.Errorf("builder.Build: %w", ErrValidation)
+	}
+	return out, nil
 }
 
 func normalizeOntology(in Ontology) Ontology {
