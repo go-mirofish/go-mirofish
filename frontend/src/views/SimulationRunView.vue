@@ -36,6 +36,14 @@
       </div>
     </header>
 
+    <PipelineStepNav
+      v-if="currentSimulationId"
+      :current-step="3"
+      :project-id="projectData?.project_id ? String(projectData.project_id) : null"
+      :simulation-id="String(currentSimulationId)"
+      :report-id="linkedReportId"
+    />
+
     <!-- Main Content Area -->
     <main class="content-area">
       <!-- Left Panel: Graph -->
@@ -102,6 +110,7 @@ const graphLoadError = ref('')
 const graphLoading = ref(false)
 const systemLogs = ref([])
 const currentStatus = ref('processing') // processing | completed | error
+const linkedReportId = ref(null)
 
 // --- Computed Layout Styles ---
 const leftPanelStyle = computed(() => {
@@ -217,6 +226,15 @@ const loadSimulationData = async () => {
     const simRes = await getSimulation(currentSimulationId.value)
     if (simRes.success && simRes.data) {
       const simData = simRes.data
+
+      try {
+        const rep = await getReportBySimulation(currentSimulationId.value)
+        if (rep?.success && rep?.data?.report_id) {
+          linkedReportId.value = String(rep.data.report_id)
+        }
+      } catch {
+        linkedReportId.value = null
+      }
       
       try {
         const configRes = await getSimulationConfig(currentSimulationId.value)
