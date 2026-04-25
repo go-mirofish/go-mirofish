@@ -1,42 +1,16 @@
-# Bundled benchmark JSON (docs UI)
+# Bundled benchmark JSON (docs UI + fixtures)
 
-These files power the **Benchmarks** page in the app. They use **short slugs** so runs are easy to spot in the searchable run picker.
+The Vue **Benchmarks** page reads committed JSON from this directory so the docs area can show timelines and metrics without a live server.
 
-## Live stack (default in app)
+- **`live-stack__hybrid__latest.json`:** aggregate “stack proof” (gateway health, bounded stress, summary IDs) used as the default combobox entry when present.
+- **Per-example `*__small__latest.json` files:** outputs from the Go example runner at **`small`** profile (deterministic local runs; CI-friendly). Regenerate with `go run ./gateway/cmd/go-mirofish-examples --all --bench-only --profile small` and copy artifacts here, or use your own capture workflow.
 
-- `live-stack__hybrid__latest.json` — shipped **live hybrid stack** style report (health, `proof`, stress, `benchmark.summary`). This is the default selection in the Benchmarks page. Replace it with output from `scripts/hybrid/runtime_sprint.py` (`--export-live` / `v0.1.0-live-benchmark.json`) when you want the UI to mirror a real local capture.
-
-## Filename pattern
-
-```text
-<scenario>__<profile>__<variant>.json
-```
-
-Segments are separated by **double underscores (`__`)** so scenario slugs can keep hyphens (e.g. `defi-stress`).
-
-| Segment   | Meaning | Examples |
-| -------- | ------- | -------- |
-| scenario | Short id (maps to a display title in `frontend/src/components/docs/lib/benchmarkRunLabel.js`) | `defi-stress`, `urban-planning`, `literary-sim`, `product-launch`, `incident-drill` |
-| profile  | Example profile | `small`, `medium` |
-| variant  | `latest` or a timestamp id from the capture | `latest`, `20260424T170506Z` |
-
-## Refreshing from local runs
-
-Example and benchmark flows still write under `benchmark/results/<long-example-name>/<profile>/` (gitignored). To update what the **docs build** shows, copy a result into this folder and rename it to match the pattern above, for example:
+**Refresh stack fields in all `*__*__latest.json`:** after you capture a live benchmark JSON (e.g. `benchmark/results/benchmarks/live-benchmark.json` from `make benchmark-live`), run:
 
 ```bash
-cp benchmark/results/defi-sentiment-stress-test/small/latest.json \
-  docs/bundled-benchmarks/defi-stress__small__latest.json
+cd gateway && go run ./cmd/mirofish-hybrid merge-bundled
 ```
 
-`scripts/hybrid/merge_hybrid_stack_into_benchmarks.py` merges stack fields from `benchmark/results/v0.1.0-live-benchmark.json` into each `*__*__latest.json` here (when that live file exists).
+or from the repo root: `bash scripts/dev/benchmark.sh merge-bundled`
 
-## Compare (CLI)
-
-```bash
-go run ./gateway/cmd/go-mirofish-examples --compare \
-  docs/bundled-benchmarks/product-launch__small__latest.json,\
-docs/bundled-benchmarks/literary-sim__small__latest.json
-```
-
-Use any two JSON paths—local `benchmark/results/...` paths still work for ad-hoc compares.
+That command merges the standard stack keys from the live file into each matching bundled JSON (see `stackKeys` in `gateway/cmd/mirofish-hybrid/merge_bundled.go`).
