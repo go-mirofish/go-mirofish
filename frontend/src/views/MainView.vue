@@ -36,6 +36,14 @@
       </div>
     </header>
 
+    <PipelineStepNav
+      v-if="currentProjectId && currentProjectId !== 'new'"
+      :current-step="currentStep"
+      :project-id="String(currentProjectId)"
+      :simulation-id="activeSimulationId"
+      :report-id="activeReportId"
+    />
+
     <!-- Main Content Area -->
     <main class="content-area">
       <!-- Left Panel: Graph -->
@@ -78,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import GraphPanel from '../components/GraphPanel.vue'
@@ -86,10 +94,12 @@ import Step1GraphBuild from '../components/Step1GraphBuild.vue'
 import Step2EnvSetup from '../components/Step2EnvSetup.vue'
 import { generateOntology, getProject, buildGraph, getTaskStatus, getGraphData } from '../api/graph'
 import { listSimulations } from '../api/simulation'
+import { getReportBySimulation } from '../api/report'
 import { getPendingUpload, clearPendingUpload } from '../store/pendingUpload'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
 import SiteFooter from '../components/SiteFooter.vue'
+import PipelineStepNav from '../components/PipelineStepNav.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,6 +124,10 @@ const currentPhase = ref(-1) // -1: Upload, 0: Ontology, 1: Build, 2: Complete
 const ontologyProgress = ref(null)
 const buildProgress = ref(null)
 const systemLogs = ref([])
+
+/** Latest simulation + report (for pipeline nav). */
+const activeSimulationId = ref(null)
+const activeReportId = ref(null)
 
 // Polling timers
 let pollTimer = null
@@ -157,6 +171,38 @@ const addLog = (msg) => {
   }
 }
 
+/** Sync in-app step 1/2 with ?step= for shareable links and browser back/forward. */
+const applyStepFromQuery = () => {
+  if (route.name !== 'Process') return
+  const s = route.query?.step
+  if (s === '1' || s === '2') {
+    currentStep.value = parseInt(String(s), 10)
+    return
+  }
+  currentStep.value = 1
+}
+
+/** Latest sim + report for this project (drives pipeline nav to steps 3–5). */
+const loadPipelineContext = async (projectId) => {
+  activeSimulationId.value = null
+  activeReportId.value = null
+  if (!projectId || projectId === 'new') return
+  try {
+    const res = await listSimulations(projectId)
+    if (!res?.success || !Array.isArray(res.data) || res.data.length === 0) return
+    const latest = res.data[0]
+    const sid = latest?.simulation_id
+    if (typeof sid !== 'string' || !sid) return
+    activeSimulationId.value = sid
+    const rep = await getReportBySimulation(sid)
+    if (rep?.success && rep?.data?.report_id) {
+      activeReportId.value = rep.data.report_id
+    }
+  } catch (e) {
+    console.warn('loadPipelineContext:', e)
+  }
+}
+
 // --- Layout Methods ---
 const toggleMaximize = (target) => {
   if (viewMode.value === target) {
@@ -167,11 +213,13 @@ const toggleMaximize = (target) => {
 }
 
 const handleNextStep = (params = {}) => {
-  if (currentStep.value < 5) {
+  if (currentStep.value < 2) {
     currentStep.value++
     addLog(t('log.enterStep', { step: currentStep.value, name: stepNames.value[currentStep.value - 1] }))
-    
-    if (currentStep.value === 3 && params.maxRounds) {
+    if (currentProjectId.value && currentProjectId.value !== 'new') {
+      router.replace({ query: { ...route.query, step: String(currentStep.value) } })
+    }
+    if (params.maxRounds) {
       addLog(t('log.customSimRounds', { rounds: params.maxRounds }))
     }
   }
@@ -181,6 +229,9 @@ const handleGoBack = () => {
   if (currentStep.value > 1) {
     currentStep.value--
     addLog(t('log.returnToStep', { step: currentStep.value, name: stepNames.value[currentStep.value - 1] }))
+    if (currentProjectId.value && currentProjectId.value !== 'new') {
+      router.replace({ query: { ...route.query, step: String(currentStep.value) } })
+    }
   }
 }
 
@@ -263,6 +314,7 @@ const loadProject = async () => {
       projectData.value = res.data
       updatePhaseByStatus(res.data.status)
       addLog(`Project loaded. Status: ${res.data.status}`)
+      await loadPipelineContext(res.data.project_id || currentProjectId.value)
       
       if (res.data.status === 'ontology_generated' && !res.data.graph_id) {
         await startBuildGraph()
@@ -428,6 +480,18 @@ const stopGraphPolling = () => {
     addLog('Graph polling stopped.')
   }
 }
+
+watch(
+  () => [route.name, route.params.projectId, route.query.step],
+  () => {
+    if (route.name !== 'Process') return
+    if (route.params.projectId) {
+      currentProjectId.value = route.params.projectId
+    }
+    applyStepFromQuery()
+  },
+  { immediate: true }
+)
 
 onMounted(() => {
   initProject()
