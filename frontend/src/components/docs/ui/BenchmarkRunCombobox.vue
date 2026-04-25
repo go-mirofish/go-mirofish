@@ -10,7 +10,7 @@
         :disabled="!options.length"
         @click="toggle"
       >
-        <span class="bench-combo__value">{{ currentLabel || '—' }}</span>
+        <span class="bench-combo__value">{{ currentLabel || '-' }}</span>
         <span class="bench-combo__chev" aria-hidden="true">▾</span>
       </button>
       <div v-show="open && options.length" class="bench-combo__panel" :aria-label="$t('docs.bench.searchRuns')">
