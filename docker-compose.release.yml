@@ -1,0 +1,25 @@
+# All-in-one image (static Vue in container). For daily development use `make up` + `npm run dev` instead.
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+      target: release
+    env_file:
+      - .env
+    environment:
+      GATEWAY_BIND_HOST: 0.0.0.0
+      GATEWAY_PORT: 3000
+      FRONTEND_DIST_DIR: /app/frontend-dist
+      PROJECTS_DIR: /app/data/projects
+      REPORTS_DIR: /app/data/reports
+      TASKS_DIR: /app/data/tasks
+      SIMULATIONS_DIR: /app/data/simulations
+    ports:
+      - "3000:3000"
+    volumes:
+      - mirofish-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  mirofish-data:
