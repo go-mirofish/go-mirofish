@@ -4,13 +4,16 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/go-mirofish/go-mirofish/gateway/internal/runinstructions"
 	reportstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/report"
+	"github.com/go-mirofish/go-mirofish/gateway/internal/telemetry"
 )
 
 type Store struct {
@@ -40,6 +43,9 @@ func (s *Store) SimulationDir(simulationID string) string {
 	return filepath.Join(s.SimulationsDir, simulationID)
 }
 func (s *Store) SimulationStatePath(simulationID string) string {
+	return filepath.Join(s.SimulationDir(simulationID), "control_state.json")
+}
+func (s *Store) WorkerSimulationStatePath(simulationID string) string {
 	return filepath.Join(s.SimulationDir(simulationID), "state.json")
 }
 func (s *Store) SimulationRunStatePath(simulationID string) string {
@@ -58,11 +64,10 @@ func (s *Store) WriteProject(projectID string, payload map[string]any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
+	if err := validateProjectPayload(projectID, payload); err != nil {
 		return err
 	}
-	return os.WriteFile(path, raw, 0o644)
+	return writeJSONAtomic(path, payload)
 }
 
 func (s *Store) ReadTask(taskID string) (map[string]any, error) {
@@ -73,26 +78,32 @@ func (s *Store) WriteTask(taskID string, payload map[string]any) error {
 	if err := os.MkdirAll(s.TasksDir, 0o755); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
+	if err := validateTaskPayload(taskID, payload); err != nil {
 		return err
 	}
-	return os.WriteFile(s.TaskPath(taskID), raw, 0o644)
+	telemetry.RecordTask(toString(payload["task_type"]), toString(payload["status"]))
+	return writeJSONAtomic(s.TaskPath(taskID), payload)
 }
 
 func (s *Store) ReadSimulation(simulationID string) (map[string]any, error) {
-	return readJSON(s.SimulationStatePath(simulationID))
+	payload, err := readJSON(s.SimulationStatePath(simulationID))
+	if err == nil {
+		return payload, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	return readJSON(s.WorkerSimulationStatePath(simulationID))
 }
 
 func (s *Store) WriteSimulation(simulationID string, payload map[string]any) error {
 	if err := os.MkdirAll(s.SimulationDir(simulationID), 0o755); err != nil {
 		return err
 	}
-	raw, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
+	if err := validateSimulationPayload(simulationID, payload); err != nil {
 		return err
 	}
-	return os.WriteFile(s.SimulationStatePath(simulationID), raw, 0o644)
+	return writeJSONAtomic(s.SimulationStatePath(simulationID), payload)
 }
 
 func (s *Store) ReadSimulationProfiles(simulationID, platform string) ([]any, bool, any, error) {
@@ -222,24 +233,7 @@ func (s *Store) BuildRunInstructions(simulationID string) map[string]any {
 	if abs, err := filepath.Abs(scriptsDir); err == nil {
 		scriptsDir = abs
 	}
-	twitterCmd := "python " + filepath.ToSlash(filepath.Join(scriptsDir, "run_twitter_simulation.py")) + " --config " + configFile
-	redditCmd := "python " + filepath.ToSlash(filepath.Join(scriptsDir, "run_reddit_simulation.py")) + " --config " + configFile
-	parallelCmd := "python " + filepath.ToSlash(filepath.Join(scriptsDir, "run_parallel_simulation.py")) + " --config " + configFile
-	return map[string]any{
-		"simulation_dir": simulationDir,
-		"scripts_dir":    scriptsDir,
-		"config_file":    configFile,
-		"commands": map[string]any{
-			"twitter":  twitterCmd,
-			"reddit":   redditCmd,
-			"parallel": parallelCmd,
-		},
-		"instructions": "1. Activate the conda environment: conda activate go-mirofish\n" +
-			"2. Run the simulation (scripts live in " + scriptsDir + "):\n" +
-			"   - Run Twitter only: " + twitterCmd + "\n" +
-			"   - Run Reddit only: " + redditCmd + "\n" +
-			"   - Run both platforms in parallel: " + parallelCmd,
-	}
+	return runinstructions.Build(simulationID, simulationDir, configFile, scriptsDir)
 }
 
 func (s *Store) ReadReport(reportID string) (map[string]any, error) {
@@ -332,6 +326,68 @@ func readJSON(path string) (map[string]any, error) {
 		return nil, err
 	}
 	return payload, nil
+}
+
+func writeJSONAtomic(path string, payload any) error {
+	raw, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func validateProjectPayload(projectID string, payload map[string]any) error {
+	if toString(payload["project_id"]) == "" {
+		payload["project_id"] = projectID
+	}
+	if toString(payload["project_id"]) == "" {
+		return fmt.Errorf("project payload missing project_id")
+	}
+	return nil
+}
+
+func validateTaskPayload(taskID string, payload map[string]any) error {
+	if toString(payload["task_id"]) == "" {
+		payload["task_id"] = taskID
+	}
+	if toString(payload["task_id"]) == "" {
+		return fmt.Errorf("task payload missing task_id")
+	}
+	if toString(payload["task_type"]) == "" {
+		return fmt.Errorf("task payload missing task_type")
+	}
+	if toString(payload["status"]) == "" {
+		return fmt.Errorf("task payload missing status")
+	}
+	return nil
+}
+
+func validateSimulationPayload(simulationID string, payload map[string]any) error {
+	if toString(payload["simulation_id"]) == "" {
+		payload["simulation_id"] = simulationID
+	}
+	if toString(payload["simulation_id"]) == "" {
+		return fmt.Errorf("simulation payload missing simulation_id")
+	}
+	if toString(payload["project_id"]) == "" {
+		return fmt.Errorf("simulation payload missing project_id")
+	}
+	if toString(payload["graph_id"]) == "" {
+		return fmt.Errorf("simulation payload missing graph_id")
+	}
+	if toString(payload["status"]) == "" {
+		return fmt.Errorf("simulation payload missing status")
+	}
+	return nil
+}
+
+func toString(value any) string {
+	got, _ := value.(string)
+	return got
 }
 
 func TwoDigits(v int) string {
