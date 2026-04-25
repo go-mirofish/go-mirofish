@@ -19,19 +19,51 @@ RUN go mod download
 
 COPY gateway /src/gateway
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/go-mirofish-gateway ./cmd/mirofish-gateway
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/go-mirofish-gateway ./cmd/mirofish-gateway
 
-FROM debian:bookworm-slim
+# Dev (default `make up`): Go gateway only — no embedded Vue. Run the UI with `npm run dev` (Vite on :5173).
+FROM debian:bookworm-slim AS dev
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=gateway-build /out/go-mirofish-gateway /app/go-mirofish-gateway
+RUN mkdir -p /app/data/projects /app/data/reports /app/data/tasks /app/data/simulations
+
+ENV GATEWAY_BIND_HOST=0.0.0.0
+ENV GATEWAY_PORT=3000
+ENV PROJECTS_DIR=/app/data/projects
+ENV REPORTS_DIR=/app/data/reports
+ENV TASKS_DIR=/app/data/tasks
+ENV SIMULATIONS_DIR=/app/data/simulations
+
+EXPOSE 3000
+
+ENTRYPOINT ["/app/go-mirofish-gateway"]
+
+# Release: static Vue baked in — use `docker compose -f docker-compose.release.yml up` or `--target release`.
+FROM debian:bookworm-slim AS release
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=gateway-build /out/go-mirofish-gateway /app/go-mirofish-gateway
 COPY --from=frontend-build /src/frontend/dist /app/frontend-dist
+RUN mkdir -p /app/data/projects /app/data/reports /app/data/tasks /app/data/simulations
 
 ENV GATEWAY_BIND_HOST=0.0.0.0
 ENV GATEWAY_PORT=3000
 ENV FRONTEND_DIST_DIR=/app/frontend-dist
-ENV BACKEND_URL=http://backend:5001
+ENV PROJECTS_DIR=/app/data/projects
+ENV REPORTS_DIR=/app/data/reports
+ENV TASKS_DIR=/app/data/tasks
+ENV SIMULATIONS_DIR=/app/data/simulations
 
 EXPOSE 3000
 
