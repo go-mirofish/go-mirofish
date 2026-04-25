@@ -2,27 +2,17 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/go-mirofish/go-mirofish/gateway/internal/artifactcontract"
+	"github.com/go-mirofish/go-mirofish/gateway/internal/telemetry"
 )
 
-type ipcCommand struct {
-	CommandID   string         `json:"command_id"`
-	CommandType string         `json:"command_type"`
-	Args        map[string]any `json:"args"`
-	Timestamp   string         `json:"timestamp"`
-}
-
-type ipcResponse struct {
-	CommandID string `json:"command_id"`
-	Status    string `json:"status"`
-	Result    any    `json:"result"`
-	Error     string `json:"error"`
-	Timestamp string `json:"timestamp"`
-}
+type ipcCommand = artifactcontract.IPCCommand
+type ipcResponse = artifactcontract.IPCResponse
 
 type IPCClient struct {
 	simulationDir string
@@ -34,30 +24,33 @@ func NewIPCClient(simulationDir string) *IPCClient {
 
 func (c *IPCClient) Send(ctx context.Context, commandType string, args map[string]any, timeout time.Duration) (IPCResult, error) {
 	commandID := fmt.Sprintf("%d", time.Now().UnixNano())
-	command := ipcCommand{
-		CommandID:   commandID,
-		CommandType: commandType,
-		Args:        args,
-		Timestamp:   time.Now().Format(time.RFC3339),
+	command := artifactcontract.IPCCommand{
+		WorkerProtocolVersion: ProtocolVersion,
+		WorkerProtocolName:    ProtocolName,
+		TransportRole:         ProtocolRoleCommand,
+		CommandID:             commandID,
+		CommandType:           commandType,
+		Args:                  args,
+		Timestamp:             time.Now().Format(time.RFC3339),
 	}
 
 	commandsDir := filepath.Join(c.simulationDir, "ipc_commands")
 	responsesDir := filepath.Join(c.simulationDir, "ipc_responses")
 	if err := os.MkdirAll(commandsDir, 0o755); err != nil {
-		return IPCResult{}, &Error{Op: "mkdir commands", Kind: ErrWorkerUnavailable, Err: err}
+		return IPCResult{}, workerError("mkdir commands", ErrWorkerUnavailable, "", err)
 	}
 	if err := os.MkdirAll(responsesDir, 0o755); err != nil {
-		return IPCResult{}, &Error{Op: "mkdir responses", Kind: ErrWorkerUnavailable, Err: err}
+		return IPCResult{}, workerError("mkdir responses", ErrWorkerUnavailable, "", err)
 	}
 
 	commandPath := filepath.Join(commandsDir, commandID+".json")
 	responsePath := filepath.Join(responsesDir, commandID+".json")
-	raw, err := json.MarshalIndent(command, "", "  ")
+	raw, err := artifactcontract.WriteIPCCommandJSON(command)
 	if err != nil {
-		return IPCResult{}, &Error{Op: "marshal command", Kind: ErrWorkerBadRequest, Err: err}
+		return IPCResult{}, workerError("marshal command", ErrWorkerBadRequest, "", err)
 	}
 	if err := os.WriteFile(commandPath, raw, 0o644); err != nil {
-		return IPCResult{}, &Error{Op: "write command", Kind: ErrWorkerUnavailable, Err: err}
+		return IPCResult{}, workerError("write command", ErrWorkerUnavailable, "", err)
 	}
 	defer os.Remove(commandPath)
 
@@ -65,30 +58,67 @@ func (c *IPCClient) Send(ctx context.Context, commandType string, args map[strin
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
-			return IPCResult{}, &Error{Op: "send", Kind: ErrWorkerTimeout, Err: ctx.Err()}
+			return IPCResult{}, workerError("send", ErrWorkerTimeout, "", ctx.Err())
 		default:
 		}
 
 		if _, err := os.Stat(responsePath); err == nil {
 			rawResp, err := os.ReadFile(responsePath)
 			if err != nil {
-				return IPCResult{}, &Error{Op: "read response", Kind: ErrWorkerUnavailable, Err: err}
+				return IPCResult{}, workerError("read response", ErrWorkerUnavailable, "", err)
 			}
 			_ = os.Remove(responsePath)
-			var resp ipcResponse
-			if err := json.Unmarshal(rawResp, &resp); err != nil {
-				return IPCResult{}, &Error{Op: "decode response", Kind: ErrWorkerUnavailable, Err: err}
+			resp, err := artifactcontract.ReadIPCResponseJSON(rawResp)
+			if err != nil {
+				return IPCResult{}, workerError("decode response", ErrWorkerUnavailable, "", err)
+			}
+			if err := validateProtocolEnvelope(resp.WorkerProtocolVersion, resp.WorkerProtocolName, resp.TransportRole, ProtocolRoleResponse); err != nil {
+				return IPCResult{}, err
 			}
 			return IPCResult{
-				Success:   resp.Status == "completed",
-				Timestamp: resp.Timestamp,
-				Error:     resp.Error,
-				Result:    resp.Result,
+				WorkerProtocolVersion: resp.WorkerProtocolVersion,
+				Success:               resp.Status == "completed",
+				Timestamp:             resp.Timestamp,
+				Error:                 derefString(resp.Error),
+				Result:                resp.Result,
 			}, nil
 		}
 
 		time.Sleep(500 * time.Millisecond)
 	}
 
-	return IPCResult{}, &Error{Op: "poll response", Kind: ErrWorkerTimeout, Detail: "timed out waiting for worker response"}
+	return IPCResult{}, workerError("poll response", ErrWorkerTimeout, "timed out waiting for worker response", nil)
+}
+
+func validateProtocolEnvelope(version, name, role, wantRole string) error {
+	if version != ProtocolVersion {
+		return workerError("validate protocol", ErrWorkerIncompatible, fmt.Sprintf("worker protocol version mismatch: got %q want %q", version, ProtocolVersion), nil)
+	}
+	if name != "" && name != ProtocolName {
+		return workerError("validate protocol", ErrWorkerIncompatible, fmt.Sprintf("worker protocol name mismatch: got %q want %q", name, ProtocolName), nil)
+	}
+	if role != wantRole {
+		return workerError("validate protocol", ErrWorkerIncompatible, fmt.Sprintf("worker transport role mismatch: got %q want %q", role, wantRole), nil)
+	}
+	return nil
+}
+
+func workerError(op string, kind error, detail string, err error) error {
+	reason := detail
+	if reason == "" {
+		if err != nil {
+			reason = err.Error()
+		} else if kind != nil {
+			reason = kind.Error()
+		}
+	}
+	telemetry.RecordWorkerFailure(op, reason)
+	return &Error{Op: op, Kind: kind, Detail: detail, Err: err}
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
