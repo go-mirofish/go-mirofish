@@ -72,19 +72,32 @@ func (z *ZepClient) IngestEpisode(ctx context.Context, episode Episode) error {
 	return z.do(ctx, "POST", "graph", payload, nil)
 }
 
+// Zep graph-batch rejects payloads with more than this many episodes per request.
+const zepGraphBatchMaxEpisodes = 20
+
 func (z *ZepClient) IngestBatch(ctx context.Context, graphID string, episodes []Episode) error {
-	payloadEpisodes := make([]map[string]any, 0, len(episodes))
-	for _, episode := range episodes {
-		payloadEpisodes = append(payloadEpisodes, map[string]any{
-			"data":       episode.Data,
-			"type":       episode.Type,
-			"created_at": episode.CreatedAt,
-		})
+	for start := 0; start < len(episodes); start += zepGraphBatchMaxEpisodes {
+		end := start + zepGraphBatchMaxEpisodes
+		if end > len(episodes) {
+			end = len(episodes)
+		}
+		chunk := episodes[start:end]
+		payloadEpisodes := make([]map[string]any, 0, len(chunk))
+		for _, episode := range chunk {
+			payloadEpisodes = append(payloadEpisodes, map[string]any{
+				"data":       episode.Data,
+				"type":       episode.Type,
+				"created_at": episode.CreatedAt,
+			})
+		}
+		if err := z.do(ctx, "POST", "graph-batch", map[string]any{
+			"graph_id": graphID,
+			"episodes": payloadEpisodes,
+		}, nil); err != nil {
+			return err
+		}
 	}
-	return z.do(ctx, "POST", "graph-batch", map[string]any{
-		"graph_id": graphID,
-		"episodes": payloadEpisodes,
-	}, nil)
+	return nil
 }
 
 func ChunkText(text string, chunkSize int, overlap int) []string {
