@@ -24,15 +24,15 @@
 
       <div class="metric-grid">
         <div class="metric-card">
-          <div class="metric-value">{{ fixture?.benchmark?.stress?.success_count ?? '—' }}/{{ fixture?.benchmark?.stress?.request_count ?? '—' }}</div>
+          <div class="metric-value">{{ fixture?.benchmark?.stress?.success_count ?? '-' }}/{{ fixture?.benchmark?.stress?.request_count ?? '-' }}</div>
           <div class="metric-label">Stress pass</div>
         </div>
         <div class="metric-card">
-          <div class="metric-value">{{ fixture?.benchmark?.stress?.latency_ms?.p95 ?? '—' }}ms</div>
+          <div class="metric-value">{{ fixture?.benchmark?.stress?.latency_ms?.p95 ?? '-' }}ms</div>
           <div class="metric-label">P95 latency</div>
         </div>
         <div class="metric-card">
-          <div class="metric-value">{{ fixture?.benchmark?.full_flow?.upstream_status ?? '—' }}</div>
+          <div class="metric-value">{{ fixture?.benchmark?.full_flow?.upstream_status ?? '-' }}</div>
           <div class="metric-label">Live failure code</div>
         </div>
       </div>
@@ -82,8 +82,10 @@
     <section v-else-if="mode === 'local'" class="mode-panel">
       <div class="mode-header">
         <p class="mode-kicker">Real product</p>
-        <h3 class="mode-title">Connect your local backend</h3>
-        <p class="mode-desc">Run the real product on your own machine, then point this UI at that backend or local gateway.</p>
+        <h3 class="mode-title">Connect to your gateway</h3>
+        <p class="mode-desc">
+          Run the real product: start the API with <code>make up</code> (Docker on :3000), then <code>npm run dev</code> for this UI. Set the API base URL below if it differs from the Vite proxy default.
+        </p>
       </div>
 
       <div class="console-box">
@@ -97,7 +99,7 @@
               v-model="draftApiBaseUrl"
               class="runtime-input"
               type="text"
-              placeholder="http://127.0.0.1:5001"
+              placeholder="http://127.0.0.1:3000"
               :disabled="loading"
             />
             <button type="button" class="runtime-btn" @click="saveApiBaseUrl" :disabled="loading">Save</button>
@@ -105,8 +107,8 @@
           </div>
           <p class="runtime-hint">Current runtime target: <code>{{ apiBaseUrl }}</code></p>
           <p v-if="connectionMessage" class="runtime-status" :class="connectionState">{{ connectionMessage }}</p>
-          <button type="button" class="probe-btn" @click="probeLocalBackend" :disabled="loading">
-            {{ loading ? 'Checking…' : 'Test local backend' }}
+          <button type="button" class="probe-btn" @click="probeGateway" :disabled="loading">
+            {{ loading ? 'Checking…' : 'Test gateway' }}
           </button>
         </div>
 
@@ -311,7 +313,7 @@ const resetApiBaseUrlField = () => {
   connectionState.value = 'ready'
 }
 
-const probeLocalBackend = async () => {
+const probeGateway = async () => {
   loading.value = true
   connectionMessage.value = ''
   connectionState.value = ''
