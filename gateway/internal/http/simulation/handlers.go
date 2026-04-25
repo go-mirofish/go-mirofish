@@ -3,6 +3,7 @@ package simulationhttp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path"
@@ -495,8 +496,18 @@ func (h *Handler) handleSimulationState(w http.ResponseWriter, simulationID stri
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
+	runnerStatus := "idle"
+	if runState, runErr := h.store.ReadRunState(simulationID); runErr == nil {
+		normalized := simulation.NormalizeRunStatus(simulationID, runState)
+		state["runner_status"] = normalized["runner_status"]
+		if value := stringValue(normalized["runner_status"]); value != "" {
+			runnerStatus = value
+		}
+	}
 	if status, _ := state["status"].(string); status == "ready" {
-		state["run_instructions"] = simulation.BuildRunInstructions(h.store.SimulationDir(simulationID), h.store.ScriptsDir, simulationID)
+		if runnerStatus == "idle" || runnerStatus == "stopped" || runnerStatus == "failed" || runnerStatus == "completed" {
+			state["run_instructions"] = simulation.BuildRunInstructions(h.store.SimulationDir(simulationID), h.store.ScriptsDir, simulationID)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": state})
 }
@@ -588,7 +599,28 @@ func (h *Handler) handleRunStatus(w http.ResponseWriter, simulationID string) {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": simulation.NormalizeRunStatus(simulationID, runState)})
+	if errorsIsNotExist(err) {
+		runState = nil
+	}
+	data := simulation.NormalizeRunStatus(simulationID, runState)
+	if rt, err2 := h.store.ReadRuntimeState(simulationID); err2 == nil {
+		switch strings.TrimSpace(stringify(rt["status"])) {
+		case "completed":
+			data["runner_status"] = "completed"
+		case "failed":
+			data["runner_status"] = "failed"
+		case "running":
+			if rs, _ := data["runner_status"].(string); rs == "" || rs == "idle" {
+				data["runner_status"] = "running"
+			}
+		case "stopped":
+			data["runner_status"] = "stopped"
+		}
+		if rt["error"] != nil && strings.TrimSpace(fmt.Sprint(rt["error"])) != "" {
+			data["error"] = rt["error"]
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": data})
 }
 
 func (h *Handler) handleRunStatusDetail(w http.ResponseWriter, r *http.Request, simulationID string) {
