@@ -35,6 +35,37 @@
             </ul>
           </div>
         </div>
+
+        <div class="overview-mirofish">
+          <h2 class="overview-section-h">{{ $t('docs.overviewVsSectionTitle') }}</h2>
+          <p class="overview-lead">{{ $t('docs.overviewVsSectionLead') }}</p>
+          <div class="overview-vs-table-wrap" role="region" :aria-label="$t('docs.overviewVsTableAria')">
+            <table class="overview-vs-table">
+              <caption class="overview-vs-caption">{{ $t('docs.overviewVsTableCaption') }}</caption>
+              <thead>
+                <tr>
+                  <th scope="col">{{ $t('docs.overviewVsColTopic') }}</th>
+                  <th scope="col">{{ $t('docs.overviewVsColPlain') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="overview-vs-td-label">{{ $t('docs.overviewVsRow1Label') }}</td>
+                  <td>{{ $t('docs.overviewVsRow1Text') }}</td>
+                </tr>
+                <tr>
+                  <td class="overview-vs-td-label">{{ $t('docs.overviewVsRow2Label') }}</td>
+                  <td>{{ $t('docs.overviewVsRow2Text') }}</td>
+                </tr>
+                <tr>
+                  <td class="overview-vs-td-label">{{ $t('docs.overviewVsRow3Label') }}</td>
+                  <td>{{ $t('docs.overviewVsRow3Text') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="overview-links">
           <router-link class="pill" to="/docs/installation">{{ $t('docs.overviewCtaInstall') }} →</router-link>
           <router-link class="pill" to="/docs/benchmark">{{ $t('docs.overviewCtaBenchmark') }} →</router-link>
@@ -46,12 +77,13 @@
         class="doc-page"
         :class="{
           'doc-page--prose': entry?.type === 'markdown',
-          'doc-page--wide': entry?.componentName === 'DocsBenchmarks' || entry?.componentName === 'DocsShowcase',
+          'doc-page--wide': entry?.componentName === 'DocsBenchmarks' || entry?.componentName === 'DocsShowcase' || entry?.componentName === 'DocsRoadmap',
         }"
       >
         <DocsBenchmarks v-if="entry?.componentName === 'DocsBenchmarks'" />
         <DocsShowcase v-else-if="entry?.componentName === 'DocsShowcase'" />
         <DocsContributing v-else-if="entry?.componentName === 'DocsContributing'" />
+        <DocsRoadmap v-else-if="entry?.componentName === 'DocsRoadmap'" />
         <DocsMarkdown v-else :source="markdownSource" />
       </div>
     </template>
@@ -82,6 +114,7 @@ import DocsMarkdown from '../components/docs/DocsMarkdown.vue'
 import DocsBenchmarks from '../components/docs/pages/DocsBenchmarks.vue'
 import DocsShowcase from '../components/docs/pages/DocsShowcase.vue'
 import DocsContributing from '../components/docs/pages/DocsContributing.vue'
+import DocsRoadmap from '../components/docs/pages/DocsRoadmap.vue'
 
 import { DOCS_GROUPS, findEntryByPath, toEditUrl } from '../docs/manifest'
 import { docSlugify } from '../components/docs/markdown/slugify.js'
@@ -101,6 +134,7 @@ const pageTitle = computed(() => {
   if (entry.value?.key === 'benchmark') return t('docs.titleBenchmark')
   if (entry.value?.key === 'showcase') return t('docs.titleShowcase')
   if (entry.value?.key === 'contributing') return t('docs.titleContributing')
+  if (entry.value?.key === 'roadmap') return t('docs.titleRoadmap')
   return t('docs.titleDocs')
 })
 
@@ -154,6 +188,12 @@ const tocHeadings = computed(() => {
       { level: 2, text: t('docs.contrib.tocStart'), id: 'doc-contrib-hero' },
       { level: 2, text: t('docs.contrib.tocWork'), id: 'doc-contrib-work' },
       { level: 2, text: t('docs.contrib.tocGuidelines'), id: 'doc-contrib-guides' },
+    ]
+  }
+  if (e.componentName === 'DocsRoadmap') {
+    return [
+      { level: 2, text: t('docs.roadmap.tocIntro'), id: 'doc-roadmap-hero' },
+      { level: 2, text: t('docs.roadmap.tocThemes'), id: 'doc-roadmap-themes' },
     ]
   }
   if (e.type === 'markdown') {
@@ -290,6 +330,88 @@ function goToPlayground() {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.overview-mirofish {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.overview-section-h {
+  margin: 8px 0 0;
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  font-weight: 850;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  color: var(--doc-text);
+}
+
+.overview-lead {
+  margin: 0 0 4px;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--doc-muted);
+  max-width: 72ch;
+}
+
+.overview-vs-table-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--doc-border);
+  border-radius: var(--doc-radius);
+  background: var(--doc-surface);
+  box-shadow: var(--doc-shadow-soft);
+}
+
+.overview-vs-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--doc-text);
+}
+
+.overview-vs-caption {
+  caption-side: top;
+  text-align: left;
+  padding: 12px 14px 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--doc-muted);
+}
+
+.overview-vs-table thead th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--doc-muted);
+  background: color-mix(in srgb, var(--doc-code-bg) 60%, var(--doc-surface));
+  border-bottom: 1px solid var(--doc-border);
+}
+
+.overview-vs-table tbody td {
+  padding: 12px 14px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--doc-border);
+}
+
+.overview-vs-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.overview-vs-td-label {
+  font-weight: 700;
+  color: var(--doc-text);
+  width: 28%;
+  min-width: 7.5rem;
+  background: color-mix(in srgb, var(--doc-bg) 35%, var(--doc-surface));
 }
 
 .overview-card {
