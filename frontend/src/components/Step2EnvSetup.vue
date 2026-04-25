@@ -432,6 +432,54 @@
                 <span class="switch-label">{{ $t('step2.customToggle') }}</span>
               </label>
             </div>
+
+            <div v-if="configuredAgentCount > 0" class="run-preview-panel">
+              <div class="run-preview-head">
+                <span class="run-preview-title">{{ $t('step2.runPreviewTitle') }}</span>
+                <span class="run-preview-sub">{{ $t('step2.runPreviewSub') }}</span>
+              </div>
+              <div class="run-preview-stats">
+                <div class="rps-cell">
+                  <span class="rps-label">{{ $t('step2.runPreviewAgents') }}</span>
+                  <div v-if="useCustomRounds" class="rps-control">
+                    <input
+                      type="number"
+                      class="rps-input mono"
+                      :min="1"
+                      :max="configuredAgentCount"
+                      v-model.number="previewAgentCount"
+                      @blur="clampPreviewAgents"
+                    />
+                    <span class="rps-max mono">/ {{ configuredAgentCount }}</span>
+                  </div>
+                  <span v-else class="rps-value mono">{{ configuredAgentCount }}</span>
+                  <p class="rps-hint">{{ $t('step2.runPreviewAgentsHint') }}</p>
+                </div>
+                <div class="rps-cell">
+                  <span class="rps-label">{{ $t('step2.runPreviewRounds') }}</span>
+                  <span class="rps-value mono">{{ effectiveRoundsForPreview }}</span>
+                  <p class="rps-hint">{{ $t('step2.runPreviewRoundsHint') }}</p>
+                </div>
+                <div class="rps-cell">
+                  <span class="rps-label">{{ $t('step2.runPreviewEstWall') }}</span>
+                  <span class="rps-value mono">~{{ estWallMinutes }} {{ $t('common.minutes') }}</span>
+                </div>
+              </div>
+              <div class="run-preview-hw">
+                <span class="hw-line mono">{{ $t('step2.runPreviewThisDevice') }}</span>
+                <div class="hw-chips">
+                  <span v-if="cpuCores != null" class="hw-chip">{{ $t('systemTerminal.cpuCores') }}: {{ cpuCores }}</span>
+                  <span v-if="deviceMemGib != null" class="hw-chip">{{ $t('systemTerminal.deviceMem') }}: {{ deviceMemGib }} GiB</span>
+                  <span v-if="displayShort" class="hw-chip">{{ displayShort }}</span>
+                  <span v-if="timeZone" class="hw-chip">{{ timeZone }}</span>
+                </div>
+              </div>
+              <div class="run-preview-outcome" :class="`tier--${workloadTier}`">
+                <span class="out-label">{{ $t('step2.runPreviewLoadLabel') }}</span>
+                <span class="out-value">{{ $t('step2.runPreviewLoad' + workloadTier) }}</span>
+                <span v-if="workloadTier === 'high' && (cpuCores != null && cpuCores < 6)" class="out-extra">{{ $t('step2.runPreviewLoadTip') }}</span>
+              </div>
+            </div>
             
             <Transition name="fade" mode="out-in">
               <div v-if="useCustomRounds" class="rounds-content custom" key="custom">
@@ -594,24 +642,18 @@
       </div>
     </Transition>
 
-    <!-- Bottom Info / Logs -->
-    <div class="system-logs">
-      <div class="log-header">
-        <span class="log-title">SYSTEM DASHBOARD</span>
-        <span class="log-id">{{ simulationId || 'NO_SIMULATION' }}</span>
-      </div>
-      <div class="log-content" ref="logContent">
-        <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
-          <span class="log-time">{{ log.time }}</span>
-          <span class="log-msg">{{ log.msg }}</span>
-        </div>
-      </div>
-    </div>
+    <SystemTerminalSplit
+      panel-title="SYSTEM DASHBOARD"
+      :id-label="simulationId || 'NO_SIMULATION'"
+      :logs="systemLogs"
+      :workflow-step="2"
+      :pipeline-animating="phase < 2"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   prepareSimulation,
@@ -620,8 +662,11 @@ import {
   getSimulationConfig,
   getSimulationConfigRealtime
 } from '../api/simulation'
+import SystemTerminalSplit from './SystemTerminalSplit.vue'
+import { useClientHardwarePreview } from '../composables/useClientHardwarePreview.js'
 
 const { t } = useI18n()
+const { cpuCores, deviceMemGib, displayShort, timeZone } = useClientHardwarePreview()
 
 const props = defineProps({
   simulationId: String,
@@ -651,6 +696,63 @@ let lastLoggedConfigStage = ''
 
 const useCustomRounds = ref(false)
 const customMaxRounds = ref(40)
+const previewAgentCount = ref(0)
+
+const configuredAgentCount = computed(() => {
+  const n = simulationConfig.value?.agent_configs?.length
+  if (n && n > 0) return n
+  return profiles.value?.length || 0
+})
+
+const effectiveRoundsForPreview = computed(() => {
+  if (!autoGeneratedRounds.value) return 0
+  return useCustomRounds.value ? customMaxRounds.value : autoGeneratedRounds.value
+})
+
+const estWallMinutes = computed(() => {
+  const r = effectiveRoundsForPreview.value
+  if (!r) return 0
+  return Math.max(1, Math.round(r * 0.6))
+})
+
+const agentsForLoad = computed(() => {
+  const cap = configuredAgentCount.value
+  if (cap < 1) return 0
+  if (useCustomRounds.value) {
+    const v = Math.min(cap, Math.max(1, Math.floor(previewAgentCount.value) || cap))
+    return v
+  }
+  return cap
+})
+
+const workloadTier = computed(() => {
+  const a = agentsForLoad.value
+  const r = effectiveRoundsForPreview.value
+  if (a < 1 || r < 1) return 'low'
+  const w = a * r
+  if (w < 1500) return 'low'
+  if (w < 12000) return 'medium'
+  return 'high'
+})
+
+function clampPreviewAgents() {
+  const c = configuredAgentCount.value
+  if (c < 1) return
+  let v = Math.floor(Number(previewAgentCount.value))
+  if (Number.isNaN(v)) v = c
+  previewAgentCount.value = Math.min(c, Math.max(1, v))
+}
+
+watch(
+  configuredAgentCount,
+  (c) => {
+    if (c < 1) return
+    if (previewAgentCount.value < 1 || previewAgentCount.value > c) {
+      previewAgentCount.value = c
+    }
+  },
+  { immediate: true }
+)
 
 // Watch stage to update phase
 watch(currentStage, (newStage) => {
@@ -1000,16 +1102,6 @@ const loadPreparedData = async () => {
     emit('update-status', 'error')
   }
 }
-
-// Scroll log to bottom
-const logContent = ref(null)
-watch(() => props.systemLogs?.length, () => {
-  nextTick(() => {
-    if (logContent.value) {
-      logContent.value.scrollTop = logContent.value.scrollHeight
-    }
-  })
-})
 
 onMounted(() => {
   if (props.simulationId) {
@@ -2007,61 +2099,6 @@ html[data-theme='dark'] .step-card {
   text-align: justify;
 }
 
-/* System Logs */
-.system-logs {
-  background: var(--doc-console-bg, #0a0a0c);
-  color: var(--doc-console-fg, #d4d4d8);
-  padding: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid var(--doc-console-border, #27272a);
-  flex-shrink: 0;
-}
-
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--doc-console-border, #333);
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  font-size: 10px;
-  color: var(--doc-console-muted, #9ca3af);
-}
-
-.log-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: 80px; /* Approx 4 lines visible */
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.log-content::-webkit-scrollbar {
-  width: 4px;
-}
-
-.log-content::-webkit-scrollbar-thumb {
-  background: var(--doc-console-scroll, #3f3f46);
-  border-radius: 2px;
-}
-
-.log-line {
-  font-size: 11px;
-  display: flex;
-  gap: 12px;
-  line-height: 1.5;
-}
-
-.log-time {
-  color: var(--doc-console-muted, #9ca3af);
-  min-width: 75px;
-}
-
-.log-msg {
-  color: var(--doc-console-fg, #d4d4d8);
-  word-break: break-all;
-}
-
 /* Spinner */
 .spinner-sm {
   width: 16px;
@@ -2556,5 +2593,186 @@ html[data-theme='dark'] .step-card {
 .modal-leave-to .profile-modal {
   transform: scale(0.95) translateY(10px);
   opacity: 0;
+}
+
+/* Run preview (custom rounds + load) */
+.run-preview-panel {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--doc-border);
+  border-radius: 8px;
+  background: var(--doc-upload-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.run-preview-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run-preview-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--doc-muted);
+}
+
+.run-preview-sub {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--doc-muted);
+}
+
+.run-preview-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+}
+
+.rps-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.rps-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--doc-muted);
+}
+
+.rps-value {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--doc-text);
+}
+
+.rps-hint {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--doc-muted);
+}
+
+.rps-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.rps-input {
+  width: 4.5rem;
+  max-width: 100%;
+  padding: 4px 8px;
+  border: 1px solid var(--doc-border);
+  border-radius: 4px;
+  background: var(--doc-surface);
+  color: var(--doc-text);
+  font-size: 16px;
+}
+
+.rps-max {
+  font-size: 12px;
+  color: var(--doc-muted);
+}
+
+.run-preview-hw {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--doc-border);
+}
+
+.run-preview-hw .hw-line {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--doc-muted);
+}
+
+.hw-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.hw-chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--doc-border);
+  background: var(--doc-surface);
+  color: var(--doc-muted);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.run-preview-outcome {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--doc-border);
+  background: var(--doc-surface);
+}
+
+.out-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--doc-muted);
+}
+
+.out-value {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--doc-text);
+}
+
+.tier--low .out-value {
+  color: #16a34a;
+}
+
+.tier--medium .out-value {
+  color: #d97706;
+}
+
+.tier--high .out-value {
+  color: #dc2626;
+}
+
+.out-extra {
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--doc-muted);
+}
+
+@media (max-width: 640px) {
+  .rounds-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .run-preview-stats {
+    grid-template-columns: 1fr;
+  }
+  .action-group.dual {
+    flex-direction: column;
+  }
+  .action-group.dual .action-btn {
+    width: 100%;
+  }
 }
 </style>
