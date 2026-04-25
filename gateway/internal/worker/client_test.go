@@ -24,10 +24,13 @@ func TestIPCClientSend(t *testing.T) {
 						t.Fatalf("expected interview command, got %q", cmd.CommandType)
 					}
 					raw, err := json.Marshal(ipcResponse{
-						CommandID: cmd.CommandID,
-						Status:    "completed",
-						Result:    map[string]any{"message": "ok"},
-						Timestamp: "2026-04-24T00:00:00Z",
+						WorkerProtocolVersion: ProtocolVersion,
+						WorkerProtocolName:    ProtocolName,
+						TransportRole:         ProtocolRoleResponse,
+						CommandID:             cmd.CommandID,
+						Status:                "completed",
+						Result:                map[string]any{"message": "ok"},
+						Timestamp:             "2026-04-24T00:00:00Z",
 					})
 					if err != nil {
 						t.Fatalf("marshal response: %v", err)
@@ -53,11 +56,15 @@ func TestIPCClientSend(t *testing.T) {
 			timeout: 2 * time.Second,
 			setup: func(t *testing.T, simulationDir string) {
 				startIPCResponder(t, simulationDir, func(t *testing.T, cmd ipcCommand) []byte {
+					errText := "agent unavailable"
 					raw, err := json.Marshal(ipcResponse{
-						CommandID: cmd.CommandID,
-						Status:    "failed",
-						Error:     "agent unavailable",
-						Timestamp: "2026-04-24T00:00:00Z",
+						WorkerProtocolVersion: ProtocolVersion,
+						WorkerProtocolName:    ProtocolName,
+						TransportRole:         ProtocolRoleResponse,
+						CommandID:             cmd.CommandID,
+						Status:                "failed",
+						Error:                 &errText,
+						Timestamp:             "2026-04-24T00:00:00Z",
 					})
 					if err != nil {
 						t.Fatalf("marshal response: %v", err)
