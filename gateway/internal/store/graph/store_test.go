@@ -128,14 +128,14 @@ func TestStoreFailurePaths(t *testing.T) {
 			},
 		},
 		{
-			name: "save project missing directory",
+			name: "save task missing required fields",
 			run: func(t *testing.T) {
 				t.Helper()
 
 				root := t.TempDir()
 				store := New(filepath.Join(root, "tasks"), filepath.Join(root, "projects"))
-				if err := store.SaveProject("proj-1", map[string]any{"project_id": "proj-1"}); err == nil {
-					t.Fatalf("expected SaveProject error")
+				if err := store.SaveTask(TaskState{TaskID: "task-1"}); err == nil {
+					t.Fatalf("expected SaveTask error")
 				}
 			},
 		},
@@ -191,6 +191,9 @@ func TestStoreListAndDelete(t *testing.T) {
 		"created_at": "2026-04-24T00:00:00Z",
 	}); err != nil {
 		t.Fatalf("SaveProject proj-1: %v", err)
+	}
+	if _, err := os.Stat(store.projectPath("proj-1")); err != nil {
+		t.Fatalf("expected project.json to exist: %v", err)
 	}
 
 	tasks, err := store.ListTasks("graph_build")
