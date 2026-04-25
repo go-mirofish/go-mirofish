@@ -42,7 +42,7 @@
           @click="open(idx)"
         >
           <img :src="s.src" :alt="s.caption" loading="lazy" decoding="async" />
-          <div class="cap"><span class="mono">{{ s.step }}</span> — {{ s.caption }}</div>
+          <div class="cap"><span class="mono">{{ s.step }}</span> - {{ s.caption }}</div>
         </button>
       </div>
     </section>
@@ -100,8 +100,10 @@ const shotMeta = [
   { n: 2, step: '03' },
   { n: 3, step: '04' },
   { n: 4, step: '04' },
-  { n: 5, step: '—' },
+  { n: 5, step: '-' },
   { n: 6, step: '05' },
+  { n: 7, step: '02' },
+  { n: 8, step: '01' },
 ]
 
 const screenshots = computed(() =>
