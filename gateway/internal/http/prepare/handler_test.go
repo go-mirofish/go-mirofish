@@ -134,12 +134,13 @@ func TestHandlePrepareValidationAndAccepted(t *testing.T) {
 		if _, err := store.ReadTask(taskID); err != nil {
 			t.Fatalf("expected task persisted: %v", err)
 		}
-		// runTask is async; wait so Windows can remove t.TempDir() (no open handles).
+		// runTask is async; wait for terminal state so t.TempDir cleanup can remove the tree.
 		deadline := time.Now().Add(10 * time.Second)
 		for time.Now().Before(deadline) {
 			task, err := store.ReadTask(taskID)
 			if err != nil {
-				break
+				time.Sleep(20 * time.Millisecond)
+				continue
 			}
 			st, _ := task["status"].(string)
 			if st == "completed" || st == "failed" {
