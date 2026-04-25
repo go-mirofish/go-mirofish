@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-mirofish/go-mirofish/gateway/internal/runinstructions"
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
 	intworker "github.com/go-mirofish/go-mirofish/gateway/internal/worker"
 )
@@ -164,12 +165,30 @@ func (s *Service) History(limit int) ([]map[string]any, error) {
 			normalized := NormalizeRunStatus(simulationID, runState)
 			simCopy["current_round"] = normalized["current_round"]
 			simCopy["runner_status"] = normalized["runner_status"]
+			simCopy["total_actions_count"] = normalized["total_actions_count"]
+			simCopy["twitter_actions_count"] = normalized["twitter_actions_count"]
+			simCopy["reddit_actions_count"] = normalized["reddit_actions_count"]
 			if simCopy["total_rounds"] == nil || intValue(simCopy["total_rounds"]) == 0 {
 				simCopy["total_rounds"] = normalized["total_rounds"]
+			}
+			// Update top-level status to reflect runtime reality.
+			rs := stringValue(normalized["runner_status"])
+			switch rs {
+			case "running", "starting":
+				simCopy["status"] = "running"
+			case "completed":
+				simCopy["status"] = "completed"
+			case "failed":
+				simCopy["status"] = "failed"
+			case "stopped":
+				simCopy["status"] = "stopped"
 			}
 		} else {
 			simCopy["current_round"] = 0
 			simCopy["runner_status"] = "idle"
+			simCopy["total_actions_count"] = 0
+			simCopy["twitter_actions_count"] = 0
+			simCopy["reddit_actions_count"] = 0
 		}
 
 		if projectID != "" {
@@ -351,7 +370,7 @@ func (s *Service) Timeline(simulationID string, startRound int, endRound int) ([
 	rounds := map[int]*TimelineEntry{}
 	activeAgents := map[int]map[int]bool{}
 	for _, item := range items {
-		round := intValue(item["round"])
+		round := actionRound(item)
 		if startRound > 0 && round < startRound {
 			continue
 		}
@@ -503,18 +522,24 @@ func NormalizeRunStatus(simulationID string, raw map[string]any) map[string]any 
 	}
 
 	data := map[string]any{
-		"simulation_id":          firstNonEmpty(stringValue(raw["simulation_id"]), simulationID),
-		"runner_status":          firstNonEmpty(stringValue(raw["runner_status"]), "idle"),
-		"current_round":          intValue(raw["current_round"]),
-		"total_rounds":           intValue(raw["total_rounds"]),
-		"progress_percent":       floatValue(raw["progress_percent"]),
-		"simulated_hours":        intValue(raw["simulated_hours"]),
-		"total_simulation_hours": intValue(raw["total_simulation_hours"]),
-		"twitter_running":        boolValue(raw["twitter_running"]),
-		"reddit_running":         boolValue(raw["reddit_running"]),
-		"twitter_actions_count":  intValue(raw["twitter_actions_count"]),
-		"reddit_actions_count":   intValue(raw["reddit_actions_count"]),
-		"total_actions_count":    intValue(raw["total_actions_count"]),
+		"simulation_id":            firstNonEmpty(stringValue(raw["simulation_id"]), simulationID),
+		"runner_status":            firstNonEmpty(stringValue(raw["runner_status"]), "idle"),
+		"current_round":            intValue(raw["current_round"]),
+		"total_rounds":             intValue(raw["total_rounds"]),
+		"progress_percent":         floatValue(raw["progress_percent"]),
+		"simulated_hours":          intValue(raw["simulated_hours"]),
+		"total_simulation_hours":   intValue(raw["total_simulation_hours"]),
+		"twitter_current_round":    intValue(firstNonNil(raw["twitter_current_round"], raw["twitter_round"])),
+		"reddit_current_round":     intValue(firstNonNil(raw["reddit_current_round"], raw["reddit_round"])),
+		"twitter_simulated_hours":  intValue(raw["twitter_simulated_hours"]),
+		"reddit_simulated_hours":   intValue(raw["reddit_simulated_hours"]),
+		"twitter_running":          boolValue(raw["twitter_running"]),
+		"reddit_running":           boolValue(raw["reddit_running"]),
+		"twitter_completed":        boolValue(raw["twitter_completed"]),
+		"reddit_completed":         boolValue(raw["reddit_completed"]),
+		"twitter_actions_count":    intValue(raw["twitter_actions_count"]),
+		"reddit_actions_count":     intValue(raw["reddit_actions_count"]),
+		"total_actions_count":      intValue(raw["total_actions_count"]),
 	}
 	for _, key := range []string{"started_at", "updated_at", "completed_at", "error"} {
 		if raw[key] != nil {
@@ -556,26 +581,7 @@ func BuildRunInstructions(simulationDir, scriptsDir, simulationID string) map[st
 		cleanScripts = abs
 	}
 
-	twitterCmd := "python " + filepath.ToSlash(filepath.Join(cleanScripts, "run_twitter_simulation.py")) + " --config " + configFile
-	redditCmd := "python " + filepath.ToSlash(filepath.Join(cleanScripts, "run_reddit_simulation.py")) + " --config " + configFile
-	parallelCmd := "python " + filepath.ToSlash(filepath.Join(cleanScripts, "run_parallel_simulation.py")) + " --config " + configFile
-
-	return map[string]any{
-		"simulation_id":  simulationID,
-		"simulation_dir": simulationDir,
-		"scripts_dir":    cleanScripts,
-		"config_file":    configFile,
-		"commands": map[string]any{
-			"twitter":  twitterCmd,
-			"reddit":   redditCmd,
-			"parallel": parallelCmd,
-		},
-		"instructions": "1. Activate the environment with your configured Python runtime.\n" +
-			"2. Run the simulation:\n" +
-			"   - Twitter only: " + twitterCmd + "\n" +
-			"   - Reddit only: " + redditCmd + "\n" +
-			"   - Both platforms: " + parallelCmd,
-	}
+	return runinstructions.Build(simulationID, simulationDir, configFile, cleanScripts)
 }
 
 func paginateMaps(items []map[string]any, limit, offset int) []map[string]any {
@@ -591,7 +597,7 @@ func paginateMaps(items []map[string]any, limit, offset int) []map[string]any {
 
 func toAction(item map[string]any, defaultPlatform string) Action {
 	return Action{
-		RoundNum:   intValue(item["round"]),
+		RoundNum:   actionRound(item),
 		Timestamp:  valueOr(item["timestamp"], ""),
 		Platform:   firstNonEmpty(valueOr(item["platform"], ""), defaultPlatform, platformFromPath(item)),
 		AgentID:    intValue(item["agent_id"]),
@@ -685,6 +691,19 @@ func platformFromPath(item map[string]any) string {
 		return platform
 	}
 	return "unknown"
+}
+
+func actionRound(item map[string]any) int {
+	return intValue(firstNonNil(item["round_num"], item["round"]))
+}
+
+func firstNonNil(values ...any) any {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
 }
 
 func cloneMap(src map[string]any) map[string]any {
