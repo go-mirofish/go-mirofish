@@ -52,6 +52,8 @@ type Store interface {
 	GetConsoleLog(reportID string, fromLine int) (map[string]any, error)
 	GetConsoleLogStream(reportID string) ([]string, error)
 	FindBySimulation(simulationID string) (ReportMeta, bool, error)
+	AppendAgentLogLine(reportID string, entry map[string]any) error
+	AppendConsoleLogLine(reportID string, line string) error
 }
 
 type FileStore struct {
@@ -388,6 +390,51 @@ func (s *FileStore) GetAgentLogStream(reportID string) ([]map[string]any, error)
 	}
 	logs, _ := data["logs"].([]map[string]any)
 	return logs, nil
+}
+
+// AppendAgentLogLine appends one JSON object per line to agent_log.jsonl (used by the report UI poller).
+func (s *FileStore) AppendAgentLogLine(reportID string, entry map[string]any) error {
+	if _, ok := entry["action"]; !ok {
+		return fmt.Errorf("agent log entry missing action")
+	}
+	if _, ok := entry["timestamp"]; !ok {
+		entry["timestamp"] = time.Now().Format(time.RFC3339Nano)
+	}
+	raw, err := json.Marshal(entry)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.agentLogPath(reportID)
+	if err := os.MkdirAll(s.reportDir(reportID), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(raw, '\n'))
+	return err
+}
+
+// AppendConsoleLogLine appends a line to console_log.txt.
+func (s *FileStore) AppendConsoleLogLine(reportID string, line string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := os.MkdirAll(s.reportDir(reportID), 0o755); err != nil {
+		return err
+	}
+	p := s.consoleLogPath(reportID)
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	prefix := time.Now().Format("2006-01-02T15:04:05.000Z07:00")
+	_, err = f.WriteString(prefix + " " + strings.TrimSpace(line) + "\n")
+	return err
 }
 
 func (s *FileStore) writeAtomicLocked(path string, raw []byte) error {
