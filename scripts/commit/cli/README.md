@@ -4,9 +4,9 @@ Composable CLI for git commits with security checks. Uses cli-building (async-fi
 
 ## Commands
 
-- **commit** (default) — Parallel commit with security checks
-- **security** — Scan for sensitive files only
-- **linear** — Print Linear issue trailer (requires `linear` CLI on PATH)
+- **commit** (default): parallel commit with security checks
+- **security**: scan for sensitive files only
+- **linear**: print Linear issue trailer (requires `linear` CLI on PATH)
 
 ## Usage
 
@@ -23,10 +23,10 @@ pnpm run commit:cli     # show usage
 
 ## Options (commit)
 
-- `--dry-run` — Preview without committing
-- `--no-security-check` — Disable security checks (not recommended)
-- `--warn-only` — Warn on sensitive files, do not fail
-- `--max <n>` — Max concurrent commits (default: 5)
+- `--dry-run`: preview without committing
+- `--no-security-check`: disable security checks (not recommended)
+- `--warn-only`: warn on sensitive files, do not fail
+- `--max <n>`: max concurrent commits (default: 5)
 
 ## Linear Integration
 
