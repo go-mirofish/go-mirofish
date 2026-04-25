@@ -26,7 +26,7 @@ func TestStoreRoundTripAndMissingBehavior(t *testing.T) {
 		t.Fatalf("ReadProject: %#v %v", gotProject, err)
 	}
 
-	task := map[string]any{"task_id": "task-1", "status": "pending"}
+	task := map[string]any{"task_id": "task-1", "task_type": "simulation_prepare", "status": "pending"}
 	if err := store.WriteTask("task-1", task); err != nil {
 		t.Fatalf("WriteTask: %v", err)
 	}
@@ -35,13 +35,29 @@ func TestStoreRoundTripAndMissingBehavior(t *testing.T) {
 		t.Fatalf("ReadTask: %#v %v", gotTask, err)
 	}
 
-	sim := map[string]any{"simulation_id": "sim-1", "project_id": "proj-1", "created_at": "2026-01-01T00:00:00Z"}
+	sim := map[string]any{"simulation_id": "sim-1", "project_id": "proj-1", "graph_id": "graph-1", "status": "created", "created_at": "2026-01-01T00:00:00Z"}
 	if err := store.WriteSimulation("sim-1", sim); err != nil {
 		t.Fatalf("WriteSimulation: %v", err)
+	}
+	if _, err := os.Stat(store.SimulationStatePath("sim-1")); err != nil {
+		t.Fatalf("expected control_state.json: %v", err)
 	}
 	gotSim, err := store.ReadSimulation("sim-1")
 	if err != nil || gotSim["project_id"] != "proj-1" {
 		t.Fatalf("ReadSimulation: %#v %v", gotSim, err)
+	}
+
+	workerOnly := map[string]any{"simulation_id": "sim-legacy", "project_id": "proj-1"}
+	rawWorker, _ := json.Marshal(workerOnly)
+	if err := os.MkdirAll(store.SimulationDir("sim-legacy"), 0o755); err != nil {
+		t.Fatalf("mkdir legacy sim dir: %v", err)
+	}
+	if err := os.WriteFile(store.WorkerSimulationStatePath("sim-legacy"), rawWorker, 0o644); err != nil {
+		t.Fatalf("write legacy worker state: %v", err)
+	}
+	legacySim, err := store.ReadSimulation("sim-legacy")
+	if err != nil || legacySim["project_id"] != "proj-1" {
+		t.Fatalf("ReadSimulation legacy fallback: %#v %v", legacySim, err)
 	}
 
 	if _, err := store.ReadProject("missing"); err == nil {
@@ -56,6 +72,13 @@ func TestStoreRoundTripAndMissingBehavior(t *testing.T) {
 	}
 	if _, err := store.ReadProject("broken"); err == nil {
 		t.Fatalf("expected corrupt project error")
+	}
+
+	if err := store.WriteTask("bad-task", map[string]any{"task_id": "bad-task"}); err == nil {
+		t.Fatalf("expected task validation error")
+	}
+	if err := store.WriteSimulation("bad-sim", map[string]any{"simulation_id": "bad-sim"}); err == nil {
+		t.Fatalf("expected simulation validation error")
 	}
 }
 
