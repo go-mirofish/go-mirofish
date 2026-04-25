@@ -16,6 +16,10 @@ const result = spawnSync(
   {
     cwd: gatewayDir,
     stdio: "inherit",
+    env: {
+      ...process.env,
+      GOCACHE: process.env.GOCACHE || "/tmp/go-build-cache",
+    },
   }
 );
 
