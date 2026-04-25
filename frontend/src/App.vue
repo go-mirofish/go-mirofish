@@ -4,7 +4,58 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
+import { useHead, useSeoMeta } from '@unhead/vue'
 import { Analytics } from '@vercel/analytics/vue'
+import {
+  SITE_BASE,
+  resolveSeoForRoute,
+  getSoftwareApplicationJsonLd,
+  getWebSiteJsonLd,
+} from '@/seo/site.js'
+
+const route = useRoute()
+const seo = computed(() => resolveSeoForRoute(route))
+const absoluteOgImage = () =>
+  `${String(SITE_BASE).replace(/\/$/, '')}/og-image.png`
+
+useSeoMeta({
+  title: () => seo.value.title,
+  description: () => seo.value.description,
+  ogTitle: () => seo.value.title,
+  ogDescription: () => seo.value.description,
+  ogUrl: () => seo.value.absoluteUrl,
+  ogType: 'website',
+  ogImage: () => absoluteOgImage(),
+  ogSiteName: 'go-mirofish',
+  ogLocale: 'en_US',
+  twitterCard: 'summary_large_image',
+  twitterTitle: () => seo.value.title,
+  twitterDescription: () => seo.value.description,
+  twitterImage: () => absoluteOgImage(),
+  keywords: () => seo.value.keywords,
+  robots: () =>
+    seo.value.noindex ? 'noindex, nofollow' : 'index, follow',
+})
+
+useHead({
+  link: () => [
+    { rel: 'canonical', key: 'canonical', href: seo.value.absoluteUrl },
+  ],
+  script: () => [
+    {
+      type: 'application/ld+json',
+      key: 'ld-website',
+      innerHTML: JSON.stringify(getWebSiteJsonLd()),
+    },
+    {
+      type: 'application/ld+json',
+      key: 'ld-software',
+      innerHTML: JSON.stringify(getSoftwareApplicationJsonLd()),
+    },
+  ],
+})
 </script>
 
 <style>
