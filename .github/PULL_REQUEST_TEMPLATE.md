@@ -1,5 +1,4 @@
 <!--
-Full narrative: docs/contributing/github-pr-6-layer.md
 Commits: docs/contributing/commit-messages.md
 GitHub only loads this file name for PR bodies, not PR_TEMPLATE.md.
 -->
@@ -31,7 +30,7 @@ GitHub only loads this file name for PR bodies, not PR_TEMPLATE.md.
 | Field | Value |
 | --- | --- |
 | Type | Feature / Bug / Chore / Docs / Epic |
-| Area | gateway-go, backend-python, frontend, contracts-parity, benchmark-ci, docker-infra, docs, upstream-sync, security, release |
+| Area | gateway-go, frontend, contracts-parity, benchmark-ci, docker-infra, docs, upstream-sync, security, release |
 | Migration phase | phase-1 … phase-6 or n/a |
 | Related issues | <!-- #123 --> |
 
@@ -41,7 +40,7 @@ GitHub only loads this file name for PR bodies, not PR_TEMPLATE.md.
 
 **Skills / learning**
 
-- [ ] Skills needed (Go, Python/Flask, Vue, Docker, CI, …)
+- [ ] Skills needed (Go, Vue, Docker, CI, …)
 - [ ] Gaps closed in this PR (spike notes, links)
 
 **Effort**
