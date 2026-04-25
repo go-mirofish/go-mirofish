@@ -30,9 +30,20 @@
             </div>
             <h3 class="step-h">{{ $t('docs.roadmap.' + step.key + 'Title') }}</h3>
             <p class="step-body">{{ $t('docs.roadmap.' + step.key + 'Body') }}</p>
+            <p v-if="step.key === 't6'" class="step-cta">
+              <router-link class="step-cta-link" to="/docs/future-consideration">
+                {{ $t('docs.roadmap.t6Cta') }}
+              </router-link>
+            </p>
           </div>
         </li>
       </ol>
+    </section>
+
+    <section id="doc-roadmap-more" class="roadmap-more" aria-labelledby="roadmap-more-h2">
+      <h2 id="roadmap-more-h2" class="section-h">{{ $t('docs.roadmap.sectionMore') }}</h2>
+      <p class="section-sub">{{ $t('docs.roadmap.moreLead') }}</p>
+      <p class="more-hint">{{ $t('docs.roadmap.moreRepoHint') }}</p>
     </section>
   </div>
 </template>
@@ -197,6 +208,22 @@ onUnmounted(() => {
   --i: 5;
 }
 
+.step-cta {
+  margin: 0.65rem 0 0;
+}
+
+.step-cta-link {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--doc-accent, #0ea5e9);
+  text-decoration: none;
+}
+
+.step-cta-link:hover,
+.step-cta-link:focus-visible {
+  text-decoration: underline;
+}
+
 .step-gutter {
   display: flex;
   flex-direction: column;
@@ -312,5 +339,19 @@ onUnmounted(() => {
   .step--in {
     opacity: 1;
   }
+}
+
+.roadmap-more {
+  margin-top: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--doc-border, #e2e8f0);
+}
+
+.more-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--doc-muted, #94a3b8);
+  font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
 }
 </style>
