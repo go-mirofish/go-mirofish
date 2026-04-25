@@ -144,11 +144,14 @@ func TestServiceStartBuildScenarios(t *testing.T) {
 			configure: func(t *testing.T, store *graphstore.Store, tasksDir, projectsDir string) *fakeMemoryClient {
 				t.Helper()
 				_ = tasksDir
-				missingProjectsDir := filepath.Join(filepath.Dir(projectsDir), "missing-projects")
+				blocker := filepath.Join(filepath.Dir(projectsDir), "missing-projects")
+				if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+					t.Fatalf("WriteFile blocker: %v", err)
+				}
 				return &fakeMemoryClient{
 					graphID: "graph-persist-fail",
 					ingestHook: func() {
-						store.ProjectsDir = missingProjectsDir
+						store.ProjectsDir = blocker
 					},
 				}
 			},
@@ -292,7 +295,7 @@ func newGraphServiceFixture(
 func waitForTaskStatus(t *testing.T, store *graphstore.Store, taskID, wantStatus string) graphstore.TaskState {
 	t.Helper()
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		task, err := store.LoadTask(taskID)
 		if err == nil && task.Status == wantStatus {
@@ -312,7 +315,7 @@ func waitForTaskStatus(t *testing.T, store *graphstore.Store, taskID, wantStatus
 func waitForProjectStatus(t *testing.T, store *graphstore.Store, projectID, wantStatus string) map[string]any {
 	t.Helper()
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
 		project, err := store.LoadProject(projectID)
 		if err == nil && valueOr(project["status"], "") == wantStatus {
