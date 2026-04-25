@@ -10,6 +10,9 @@ Thumbs.db
 .env.test
 .env.production
 
+# Local-only backend runtime resolution (Machine-specific; created by setup-backend)
+backend/.mirofish/
+
 # Python
 __pycache__/
 *.py[cod]
@@ -52,17 +55,12 @@ htmlcov/
 # Local docs and test programs
 mydoc/
 mytest/
-docs/hybrid/capture-checklist.md
-docs/hybrid/benchmark-proof-template.md
 benchmark/results/
 
 # Log files
 backend/logs/
 *.log
 benchmark/
-
-# Uploaded files
-backend/uploads/
 
 # Docker data
 data/
