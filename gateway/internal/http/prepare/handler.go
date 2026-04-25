@@ -191,6 +191,12 @@ func (h *Handler) runTask(taskID, simulationID, simulationRequirement string, en
 		h.failTask(taskID, err.Error())
 		return
 	}
+	projectID, _ := state["project_id"].(string)
+	project, err := h.store.ReadProject(projectID)
+	if err != nil {
+		h.failTask(taskID, err.Error())
+		return
+	}
 	graphID, _ := state["graph_id"].(string)
 	graphData, err := h.graph.GetGraphData(ctx, graphID)
 	if err != nil {
@@ -203,6 +209,9 @@ func (h *Handler) runTask(taskID, simulationID, simulationRequirement string, en
 	}
 	filtered := intgraph.FilterEntitiesFromGraphData(graphData, entityTypes, true)
 	entities := mapSlice(filtered["entities"])
+	if len(entities) == 0 {
+		entities = h.entitiesFromOntologyFallback(project, entityTypes)
+	}
 	if len(entities) == 0 {
 		err = fmt.Errorf("no matching entities")
 		state["status"] = "failed"
@@ -277,8 +286,13 @@ func (h *Handler) runTask(taskID, simulationID, simulationRequirement string, en
 }
 
 func (h *Handler) isPrepared(simulationID string) bool {
-	for _, name := range []string{"state.json", "simulation_config.json", "reddit_profiles.json", "twitter_profiles.csv"} {
-		if _, err := os.Stat(filepath.Join(h.store.SimulationDir(simulationID), name)); err != nil {
+	for _, path := range []string{
+		h.store.SimulationStatePath(simulationID),
+		filepath.Join(h.store.SimulationDir(simulationID), "simulation_config.json"),
+		filepath.Join(h.store.SimulationDir(simulationID), "reddit_profiles.json"),
+		filepath.Join(h.store.SimulationDir(simulationID), "twitter_profiles.csv"),
+	} {
+		if _, err := os.Stat(path); err != nil {
 			return false
 		}
 	}
@@ -331,6 +345,9 @@ func (h *Handler) completeTask(taskID string, result map[string]any) {
 }
 
 func (h *Handler) writeSimulationProfiles(simulationID string, redditProfiles, twitterProfiles []map[string]any) error {
+	if len(redditProfiles) == 0 || len(twitterProfiles) == 0 {
+		return fmt.Errorf("simulation profiles are required for both platforms")
+	}
 	simDir := h.store.SimulationDir(simulationID)
 	if err := os.MkdirAll(simDir, 0o755); err != nil {
 		return err
@@ -348,17 +365,29 @@ func (h *Handler) writeSimulationProfiles(simulationID string, redditProfiles, t
 	}
 	defer file.Close()
 	writer := csv.NewWriter(file)
-	headers := []string{"user_id", "username", "name", "bio", "persona", "friend_count", "follower_count", "statuses_count", "created_at", "age", "gender", "mbti", "country", "profession"}
+	// OASIS generate_twitter_agent_graph expects user_char (combined persona text); see oasis_profile_generator.py.
+	headers := []string{"user_id", "username", "name", "user_char", "description", "bio", "persona", "friend_count", "follower_count", "statuses_count", "created_at", "age", "gender", "mbti", "country", "profession"}
 	if err := writer.Write(headers); err != nil {
 		return err
 	}
 	for _, profile := range twitterProfiles {
+		bio := strings.TrimSpace(fmt.Sprint(profile["bio"]))
+		persona := strings.TrimSpace(fmt.Sprint(profile["persona"]))
+		userChar := strings.TrimSpace(bio + " " + persona)
+		if userChar == "" {
+			userChar = persona
+		}
+		if userChar == "" {
+			userChar = bio
+		}
 		row := []string{
 			fmt.Sprint(profile["user_id"]),
 			fmt.Sprint(profile["username"]),
 			fmt.Sprint(profile["name"]),
-			fmt.Sprint(profile["bio"]),
-			fmt.Sprint(profile["persona"]),
+			userChar,
+			bio,
+			bio,
+			persona,
 			fmt.Sprint(profile["friend_count"]),
 			fmt.Sprint(profile["follower_count"]),
 			fmt.Sprint(profile["statuses_count"]),
@@ -378,11 +407,44 @@ func (h *Handler) writeSimulationProfiles(simulationID string, redditProfiles, t
 }
 
 func (h *Handler) writeSimulationConfig(simulationID string, payload map[string]any) error {
+	if err := validateSimulationConfig(simulationID, payload); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(h.store.SimulationConfigPath(simulationID), raw, 0o644)
+	path := h.store.SimulationConfigPath(simulationID)
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpPath, path)
+}
+
+func validateSimulationConfig(simulationID string, payload map[string]any) error {
+	if strings.TrimSpace(fmt.Sprint(payload["simulation_id"])) == "" || fmt.Sprint(payload["simulation_id"]) == "<nil>" {
+		payload["simulation_id"] = simulationID
+	}
+	if strings.TrimSpace(fmt.Sprint(payload["simulation_id"])) == "" || fmt.Sprint(payload["simulation_id"]) == "<nil>" {
+		return fmt.Errorf("simulation config missing simulation_id")
+	}
+	if strings.TrimSpace(fmt.Sprint(payload["simulation_requirement"])) == "" || fmt.Sprint(payload["simulation_requirement"]) == "<nil>" {
+		return fmt.Errorf("simulation config missing simulation_requirement")
+	}
+	switch configs := payload["agent_configs"].(type) {
+	case []map[string]any:
+		if len(configs) == 0 {
+			return fmt.Errorf("simulation config missing agent_configs")
+		}
+	case []any:
+		if len(configs) == 0 {
+			return fmt.Errorf("simulation config missing agent_configs")
+		}
+	default:
+		return fmt.Errorf("simulation config missing agent_configs")
+	}
+	return nil
 }
 
 type providerContentGenerator struct {
@@ -506,6 +568,67 @@ func normalizeStringList(value any) []string {
 	default:
 		return nil
 	}
+}
+
+// When Zep (or the graph list APIs) return no nodes yet, preparation still needs actors.
+// We derive placeholder entities from the project's ontology entity_types.
+const maxOntologyFallbackEntities = 32
+
+func (h *Handler) entitiesFromOntologyFallback(project map[string]any, entityTypes []string) []map[string]any {
+	allowed := map[string]bool{}
+	for _, t := range entityTypes {
+		if t != "" {
+			allowed[t] = true
+		}
+	}
+	ontology, _ := project["ontology"].(map[string]any)
+	if ontology == nil {
+		return nil
+	}
+	rawTypes, _ := ontology["entity_types"].([]any)
+	if len(rawTypes) == 0 {
+		return nil
+	}
+	now := time.Now().UnixNano()
+	out := make([]map[string]any, 0, len(rawTypes))
+	for i, raw := range rawTypes {
+		if len(out) >= maxOntologyFallbackEntities {
+			break
+		}
+		et, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(fmt.Sprint(et["name"]))
+		if name == "" {
+			continue
+		}
+		if len(allowed) > 0 && !allowed[name] {
+			continue
+		}
+		summary := strings.TrimSpace(fmt.Sprint(et["description"]))
+		attrs := map[string]any{}
+		if a, ok := et["attributes"].([]any); ok {
+			for _, spec := range a {
+				sm, ok := spec.(map[string]any)
+				if !ok {
+					continue
+				}
+				aname := strings.TrimSpace(fmt.Sprint(sm["name"]))
+				if aname != "" {
+					attrs[aname] = ""
+				}
+			}
+		}
+		out = append(out, map[string]any{
+			"uuid":       fmt.Sprintf("ont_fb_%d_%d", i, now),
+			"name":       name,
+			"labels":     []any{name, "Entity"},
+			"summary":    summary,
+			"attributes": attrs,
+		})
+	}
+	return out
 }
 
 func mapSlice(value any) []map[string]any {
