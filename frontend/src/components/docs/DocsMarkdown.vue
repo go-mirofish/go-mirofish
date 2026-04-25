@@ -98,8 +98,10 @@ watch(() => html.value, wireCopyButtons)
   padding: clamp(20px, 2vw, 32px) clamp(18px, 2.4vw, 40px);
   box-shadow: var(--doc-shadow-soft);
   max-width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .md :deep(h1),
@@ -118,7 +120,12 @@ watch(() => html.value, wireCopyButtons)
   border-radius: var(--doc-radius, 2px);
 }
 .md :deep(p) { color: var(--doc-text); line-height: 1.75; margin: 10px 0; }
-.md :deep(a) { color: var(--doc-accent); text-decoration: none; }
+.md :deep(a) {
+  color: var(--doc-accent);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .md :deep(a:hover) { text-decoration: underline; }
 
 .md :deep(ul),
@@ -131,7 +138,12 @@ watch(() => html.value, wireCopyButtons)
 }
 .md :deep(ul) { list-style-type: disc; }
 .md :deep(ol) { list-style-type: decimal; }
-.md :deep(li) { margin: 0.4em 0; padding-left: 0.2em; }
+.md :deep(li) {
+  margin: 0.4em 0;
+  padding-left: 0.2em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .md :deep(li::marker) { color: var(--doc-muted); }
 .md :deep(hr) {
   border: 0;
