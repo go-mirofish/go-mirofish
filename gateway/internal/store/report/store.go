@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -55,6 +56,8 @@ type Store interface {
 
 type FileStore struct {
 	ReportsDir string
+
+	mu sync.Mutex // serializes all I/O so concurrent status polls cannot collide with atomic renames (Windows).
 }
 
 func NewFileStore(reportsDir string) *FileStore {
@@ -82,24 +85,41 @@ func (s *FileStore) sectionPath(reportID string, index int) string {
 }
 
 func (s *FileStore) CreateReport(reportID string, meta ReportMeta) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := os.MkdirAll(s.reportDir(reportID), 0o755); err != nil {
 		return err
 	}
-	return s.SaveMeta(reportID, meta)
+	return s.saveMetaLocked(reportID, meta)
 }
 
 func (s *FileStore) SaveMeta(reportID string, meta ReportMeta) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := os.MkdirAll(s.reportDir(reportID), 0o755); err != nil {
+		return err
+	}
+	return s.saveMetaLocked(reportID, meta)
+}
+
+func (s *FileStore) saveMetaLocked(reportID string, meta ReportMeta) error {
+	if err := validateMeta(reportID, meta); err != nil {
 		return err
 	}
 	raw, err := json.MarshalIndent(meta, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.metaPath(reportID), raw, 0o644)
+	return s.writeAtomicLocked(s.metaPath(reportID), raw)
 }
 
 func (s *FileStore) LoadMeta(reportID string) (ReportMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadMetaLocked(reportID)
+}
+
+func (s *FileStore) loadMetaLocked(reportID string) (ReportMeta, error) {
 	var meta ReportMeta
 	raw, err := os.ReadFile(s.metaPath(reportID))
 	if err != nil {
@@ -117,14 +137,21 @@ func (s *FileStore) LoadMeta(reportID string) (ReportMeta, error) {
 func (s *FileStore) SaveProgress(reportID string, progress Progress) error {
 	progress.ReportID = reportID
 	progress.UpdatedAt = time.Now().Format(time.RFC3339)
+	if err := validateProgress(progress); err != nil {
+		return err
+	}
 	raw, err := json.MarshalIndent(progress, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.progressPath(reportID), raw, 0o644)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeAtomicLocked(s.progressPath(reportID), raw)
 }
 
 func (s *FileStore) LoadProgress(reportID string) (Progress, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var progress Progress
 	raw, err := os.ReadFile(s.progressPath(reportID))
 	if err != nil {
@@ -140,11 +167,18 @@ func (s *FileStore) SaveSection(reportID string, index int, title string, conten
 	if err := os.MkdirAll(s.reportDir(reportID), 0o755); err != nil {
 		return err
 	}
+	if strings.TrimSpace(title) == "" {
+		return fmt.Errorf("report section title is required")
+	}
 	body := "## " + title + "\n\n" + strings.TrimSpace(content) + "\n"
-	return os.WriteFile(s.sectionPath(reportID, index), []byte(body), 0o644)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeAtomicLocked(s.sectionPath(reportID, index), []byte(body))
 }
 
 func (s *FileStore) LoadSections(reportID string) ([]map[string]any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if _, err := os.Stat(s.reportDir(reportID)); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return []map[string]any{}, nil
@@ -181,10 +215,17 @@ func (s *FileStore) SaveMarkdown(reportID string, markdown string) error {
 	if err := os.MkdirAll(s.reportDir(reportID), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(s.markdownPath(reportID), []byte(markdown), 0o644)
+	if strings.TrimSpace(markdown) == "" {
+		return fmt.Errorf("report markdown is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeAtomicLocked(s.markdownPath(reportID), []byte(markdown))
 }
 
 func (s *FileStore) LoadMarkdown(reportID string) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	raw, err := os.ReadFile(s.markdownPath(reportID))
 	if err != nil {
 		return "", err
@@ -193,10 +234,18 @@ func (s *FileStore) LoadMarkdown(reportID string) (string, error) {
 }
 
 func (s *FileStore) DeleteReport(reportID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return os.RemoveAll(s.reportDir(reportID))
 }
 
 func (s *FileStore) ListReports(simulationID string, limit int) ([]ReportMeta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listReportsLocked(simulationID, limit)
+}
+
+func (s *FileStore) listReportsLocked(simulationID string, limit int) ([]ReportMeta, error) {
 	if err := os.MkdirAll(s.ReportsDir, 0o755); err != nil {
 		return nil, err
 	}
@@ -209,7 +258,7 @@ func (s *FileStore) ListReports(simulationID string, limit int) ([]ReportMeta, e
 		if !entry.IsDir() {
 			continue
 		}
-		meta, err := s.LoadMeta(entry.Name())
+		meta, err := s.loadMetaLocked(entry.Name())
 		if err != nil {
 			continue
 		}
@@ -228,7 +277,9 @@ func (s *FileStore) ListReports(simulationID string, limit int) ([]ReportMeta, e
 }
 
 func (s *FileStore) FindBySimulation(simulationID string) (ReportMeta, bool, error) {
-	reports, err := s.ListReports(simulationID, 1)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reports, err := s.listReportsLocked(simulationID, 1)
 	if err != nil {
 		return ReportMeta{}, false, err
 	}
@@ -239,6 +290,12 @@ func (s *FileStore) FindBySimulation(simulationID string) (ReportMeta, bool, err
 }
 
 func (s *FileStore) GetConsoleLog(reportID string, fromLine int) (map[string]any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getConsoleLogLocked(reportID, fromLine)
+}
+
+func (s *FileStore) getConsoleLogLocked(reportID string, fromLine int) (map[string]any, error) {
 	logPath := s.consoleLogPath(reportID)
 	if _, err := os.Stat(logPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -264,7 +321,9 @@ func (s *FileStore) GetConsoleLog(reportID string, fromLine int) (map[string]any
 }
 
 func (s *FileStore) GetConsoleLogStream(reportID string) ([]string, error) {
-	data, err := s.GetConsoleLog(reportID, 0)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.getConsoleLogLocked(reportID, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -280,6 +339,12 @@ func (s *FileStore) GetConsoleLogStream(reportID string) ([]string, error) {
 }
 
 func (s *FileStore) GetAgentLog(reportID string, fromLine int) (map[string]any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.getAgentLogLocked(reportID, fromLine)
+}
+
+func (s *FileStore) getAgentLogLocked(reportID string, fromLine int) (map[string]any, error) {
 	logPath := s.agentLogPath(reportID)
 	if _, err := os.Stat(logPath); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -315,7 +380,9 @@ func (s *FileStore) GetAgentLog(reportID string, fromLine int) (map[string]any, 
 }
 
 func (s *FileStore) GetAgentLogStream(reportID string) ([]map[string]any, error) {
-	data, err := s.GetAgentLog(reportID, 0)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, err := s.getAgentLogLocked(reportID, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -323,11 +390,80 @@ func (s *FileStore) GetAgentLogStream(reportID string) ([]map[string]any, error)
 	return logs, nil
 }
 
+func (s *FileStore) writeAtomicLocked(path string, raw []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".*.atomic")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(tmpName)
+		}
+	}()
+	if _, err := tmp.Write(raw); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		_ = os.Remove(path)
+		if err := os.Rename(tmpName, path); err != nil {
+			return err
+		}
+	}
+	ok = true
+	return nil
+}
+
 func twoDigits(v int) string {
 	if v < 10 {
 		return "0" + strconv.Itoa(v)
 	}
 	return strconv.Itoa(v)
+}
+
+func validateMeta(reportID string, meta ReportMeta) error {
+	if strings.TrimSpace(meta.ReportID) == "" {
+		meta.ReportID = reportID
+	}
+	if strings.TrimSpace(meta.ReportID) == "" {
+		return fmt.Errorf("report meta missing report_id")
+	}
+	if strings.TrimSpace(meta.SimulationID) == "" {
+		return fmt.Errorf("report meta missing simulation_id")
+	}
+	if strings.TrimSpace(meta.Status) == "" {
+		return fmt.Errorf("report meta missing status")
+	}
+	if strings.TrimSpace(meta.CreatedAt) == "" {
+		return fmt.Errorf("report meta missing created_at")
+	}
+	return nil
+}
+
+func validateProgress(progress Progress) error {
+	if strings.TrimSpace(progress.ReportID) == "" {
+		return fmt.Errorf("report progress missing report_id")
+	}
+	if strings.TrimSpace(progress.Status) == "" {
+		return fmt.Errorf("report progress missing status")
+	}
+	if progress.Progress < 0 || progress.Progress > 100 {
+		return fmt.Errorf("report progress out of range")
+	}
+	return nil
 }
 
 func parseSectionIndex(name string) int {
