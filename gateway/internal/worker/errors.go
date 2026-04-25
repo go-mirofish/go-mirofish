@@ -3,11 +3,12 @@ package worker
 import "errors"
 
 var (
-	ErrWorkerNotFound    = errors.New("worker simulation not found")
-	ErrWorkerNotReady    = errors.New("worker environment not ready")
-	ErrWorkerBadRequest  = errors.New("worker bad request")
-	ErrWorkerUnavailable = errors.New("worker unavailable")
-	ErrWorkerTimeout     = errors.New("worker timeout")
+	ErrWorkerNotFound     = errors.New("worker simulation not found")
+	ErrWorkerNotReady     = errors.New("worker environment not ready")
+	ErrWorkerBadRequest   = errors.New("worker bad request")
+	ErrWorkerUnavailable  = errors.New("worker unavailable")
+	ErrWorkerTimeout      = errors.New("worker timeout")
+	ErrWorkerIncompatible = errors.New("worker protocol incompatible")
 )
 
 type Error struct {
@@ -31,6 +32,10 @@ func (e *Error) Error() string {
 		return e.Kind.Error()
 	}
 	return "worker error"
+}
+
+func (e *Error) Is(target error) bool {
+	return e != nil && e.Kind == target
 }
 
 func (e *Error) Unwrap() error {
