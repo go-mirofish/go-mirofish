@@ -36,6 +36,14 @@
       </div>
     </header>
 
+    <PipelineStepNav
+      v-if="routeReportId"
+      :current-step="4"
+      :project-id="projectData?.project_id ? String(projectData.project_id) : null"
+      :simulation-id="simulationId"
+      :report-id="String(currentReportId)"
+    />
+
     <!-- Main Content Area -->
     <main class="content-area">
       <!-- Left Panel: Graph -->
@@ -75,6 +83,7 @@ import { getSimulation } from '../api/simulation'
 import { getReport } from '../api/report'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
 import ThemeToggle from '../components/ThemeToggle.vue'
+import PipelineStepNav from '../components/PipelineStepNav.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -89,6 +98,11 @@ const viewMode = ref('workbench')
 
 // Data State
 const currentReportId = ref(route.params.reportId)
+const routeReportId = computed(() => {
+  const id = route.params.reportId ?? currentReportId.value
+  if (id == null || id === '') return ''
+  return String(id)
+})
 const simulationId = ref(null)
 const projectData = ref(null)
 const graphData = ref(null)
