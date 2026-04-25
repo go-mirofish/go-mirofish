@@ -62,6 +62,14 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 			if tt.wantBody != "" && !strings.Contains(rec.Body.String(), tt.wantBody) {
 				t.Fatalf("body %q missing %q", rec.Body.String(), tt.wantBody)
 			}
+			if tt.name == "state" {
+				if !strings.Contains(rec.Body.String(), `"runner_status":"running"`) {
+					t.Fatalf("expected runner status overlay in state payload, got %q", rec.Body.String())
+				}
+				if strings.Contains(rec.Body.String(), `"run_instructions"`) {
+					t.Fatalf("did not expect run_instructions while native runner is active, got %q", rec.Body.String())
+				}
+			}
 		})
 	}
 
@@ -82,8 +90,8 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	if !strings.HasPrefix(createdID, "sim_") {
 		t.Fatalf("simulation_id = %q, want sim_*", createdID)
 	}
-	if _, err := os.Stat(filepath.Join(root, "simulations", createdID, "state.json")); err != nil {
-		t.Fatalf("expected created state.json: %v", err)
+	if _, err := os.Stat(filepath.Join(root, "simulations", createdID, "control_state.json")); err != nil {
+		t.Fatalf("expected created control_state.json: %v", err)
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodPost, "/api/simulation/delete", strings.NewReader(`{"simulation_id":"sim-delete"}`))
@@ -139,10 +147,11 @@ func newSimulationHandlerFixture(t *testing.T) (*Handler, string) {
 		"created_at":       "2026-01-01T00:00:00Z",
 	})
 	writeJSONFile(t, filepath.Join(simDir, "run_state.json"), map[string]any{
-		"simulation_id": "sim-1",
-		"runner_status": "running",
-		"current_round": 1,
-		"total_rounds":  2,
+		"worker_protocol_version": "1.0",
+		"simulation_id":           "sim-1",
+		"runner_status":           "running",
+		"current_round":           1,
+		"total_rounds":            2,
 	})
 	writeJSONFile(t, filepath.Join(simDir, "simulation_config.json"), map[string]any{
 		"simulation_id":          "sim-1",
