@@ -101,7 +101,9 @@
                   <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                   <circle cx="12" cy="7" r="4"></circle>
                 </svg>
-                <span>{{ selectedAgent ? selectedAgent.username : $t('step5.chatWithAgent') }}</span>
+                <span
+                  :title="selectedAgent ? selectedAgent.username : $t('step5.chatWithAgent')"
+                >{{ selectedAgent ? selectedAgent.username : $t('step5.chatWithAgent') }}</span>
                 <svg class="dropdown-arrow" :class="{ open: showAgentDropdown }" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"></polyline>
                 </svg>
@@ -243,6 +245,29 @@
               <p class="empty-text">
                 {{ chatTarget === 'report_agent' ? $t('step5.chatEmptyReportAgent') : $t('step5.chatEmptyAgent') }}
               </p>
+              <div
+                v-if="chatTarget === 'report_agent' && reportAgentStarters.length > 0"
+                class="report-agent-starters"
+              >
+                <p class="starters-heading">{{ $t('step5.conversationStartersHeading') }}</p>
+                <ul class="starter-chips" role="list">
+                  <li v-for="s in reportAgentStarters" :key="s.id">
+                    <button
+                      type="button"
+                      class="starter-chip"
+                      :disabled="isSending"
+                      :title="s.prompt"
+                      @click="sendStarterMessage(s.prompt)"
+                    >
+                      <span class="starter-chip__label">{{ s.label }}</span>
+                      <svg class="starter-chip__arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                      </svg>
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
             <div 
               v-for="(msg, idx) in chatHistory" 
@@ -354,9 +379,13 @@
               ></textarea>
             </div>
 
+            <p v-if="surveyError" class="survey-error" role="alert">{{ surveyError }}</p>
+            <p v-if="!simulationId" class="survey-hint">{{ $t('step5.surveyNeedsSimulation') }}</p>
+
             <button 
+              type="button"
               class="survey-submit-btn"
-              :disabled="selectedAgents.size === 0 || !surveyQuestion.trim() || isSurveying"
+              :disabled="selectedAgents.size === 0 || !surveyQuestion.trim() || isSurveying || !simulationId"
               @click="submitSurvey"
             >
               <span v-if="isSurveying" class="loading-spinner"></span>
@@ -439,8 +468,46 @@ const selectedAgents = ref(new Set())
 const surveyQuestion = ref('')
 const surveyResults = ref([])
 const isSurveying = ref(false)
+const surveyError = ref('')
+
+const extractInterviewReply = (entry) => {
+  if (!entry || typeof entry !== 'object') return ''
+  if (typeof entry.response === 'string') return entry.response
+  if (typeof entry.answer === 'string') return entry.answer
+  const pls = entry.platforms
+  if (pls && typeof pls === 'object') {
+    for (const k of Object.keys(pls)) {
+      const sub = pls[k]
+      if (sub && typeof sub.response === 'string') return sub.response
+    }
+  }
+  return ''
+}
+
+const findResultForAgent = (resultsMap, agentIdx) => {
+  if (!resultsMap || typeof resultsMap !== 'object') return null
+  for (const key of [`reddit_${agentIdx}`, `twitter_${agentIdx}`]) {
+    if (resultsMap[key] != null) return resultsMap[key]
+  }
+  for (const [k, v] of Object.entries(resultsMap)) {
+    if (k.endsWith(`_${agentIdx}`)) return v
+  }
+  return null
+}
+
+/** Normalize gateway batch interview body: result.results is the per-agent map. */
+const parseBatchInterviewResults = (ipcBody) => {
+  if (!ipcBody || typeof ipcBody !== 'object') return null
+  const payload = ipcBody.result != null ? ipcBody.result : ipcBody
+  let map = payload && payload.results
+  if (map && typeof map === 'object' && map.results && typeof map.results === 'object') {
+    map = map.results
+  }
+  return map && typeof map === 'object' ? map : null
+}
 
 // Report Data
+const reportMeta = ref(null)
 const reportOutline = ref(null)
 const generatedSections = ref({})
 const collapsedSections = ref(new Set())
@@ -460,6 +527,76 @@ const rightPanel = ref(null)
 const addLog = (msg) => {
   emit('add-log', msg)
 }
+
+const truncateText = (s, max) => {
+  if (!s || typeof s !== 'string') return ''
+  const u = s.trim()
+  if (u.length <= max) return u
+  return u.slice(0, max) + '…'
+}
+
+/** Suggested first messages for Report Agent, grounded in report outline + simulation requirement (project). */
+const reportAgentStarters = computed(() => {
+  if (chatTarget.value !== 'report_agent') return []
+  const title = (reportOutline.value?.title || '').trim()
+  const summary = (reportOutline.value?.summary || '').trim()
+  const rawSections = reportOutline.value?.sections
+  const sections = Array.isArray(rawSections) ? rawSections : []
+  const first = sections[0]
+  const firstSectionTitle = first
+    ? typeof first === 'object'
+      ? (first.title || first.name || '').trim()
+      : String(first).trim()
+    : ''
+  const req = (reportMeta.value?.simulation_requirement || '').trim()
+  const reportName = title || t('step5.starterThisReport')
+  const list = []
+
+  if (title || summary) {
+    list.push({
+      id: 'findings',
+      label: t('step5.starterLabelFindings'),
+      prompt: t('step5.starterPromptFindings', {
+        title: reportName,
+        summary: summary ? truncateText(summary, 450) : t('step5.starterNoSummary')
+      })
+    })
+  }
+  if (req) {
+    list.push({
+      id: 'goal',
+      label: t('step5.starterLabelGoal'),
+      prompt: t('step5.starterPromptGoal', { requirement: truncateText(req, 700) })
+    })
+  }
+  if (firstSectionTitle) {
+    list.push({
+      id: 'section',
+      label: t('step5.starterLabelSection', { section: truncateText(firstSectionTitle, 40) }),
+      prompt: t('step5.starterPromptSection', { title: reportName, section: firstSectionTitle })
+    })
+  }
+  list.push({
+    id: 'risks',
+    label: t('step5.starterLabelRisks'),
+    prompt: t('step5.starterPromptRisks', { title: reportName })
+  })
+  list.push({
+    id: 'memory',
+    label: t('step5.starterLabelMemory'),
+    prompt: t('step5.starterPromptMemory', { title: reportName })
+  })
+  if (list.length === 0) {
+    return [
+      {
+        id: 'explore',
+        label: t('step5.starterLabelExplore'),
+        prompt: t('step5.starterPromptExplore')
+      }
+    ]
+  }
+  return list.slice(0, 6)
+})
 
 const toggleSectionCollapse = (idx) => {
   if (!generatedSections.value[idx + 1]) return
@@ -633,7 +770,7 @@ const sendMessage = async () => {
   
   scrollToBottom()
   isSending.value = true
-  
+
   try {
     if (chatTarget.value === 'report_agent') {
       await sendToReportAgent(message)
@@ -743,6 +880,14 @@ const sendToAgent = async (message) => {
   }
 }
 
+const sendStarterMessage = (prompt) => {
+  if (isSending.value || !prompt?.trim()) return
+  chatInput.value = prompt
+  nextTick(() => {
+    void sendMessage()
+  })
+}
+
 const scrollToBottom = () => {
   nextTick(() => {
     if (chatMessages.value) {
@@ -773,48 +918,38 @@ const clearAgentSelection = () => {
 }
 
 const submitSurvey = async () => {
+  surveyError.value = ''
+  if (!props.simulationId) {
+    surveyError.value = t('step5.surveyNeedsSimulation')
+    return
+  }
   if (selectedAgents.value.size === 0 || !surveyQuestion.value.trim()) return
-  
+
   isSurveying.value = true
   addLog(t('log.sendSurvey', { count: selectedAgents.value.size }))
-  
+
   try {
-    const interviews = Array.from(selectedAgents.value).map(idx => ({
+    const interviews = Array.from(selectedAgents.value).map((idx) => ({
       agent_id: idx,
-      prompt: surveyQuestion.value.trim()
+      prompt: surveyQuestion.value.trim(),
+      platform: 'reddit'
     }))
-    
+
     const res = await interviewAgents({
       simulation_id: props.simulationId,
-      interviews: interviews
+      interviews
     })
-    
+
     if (res.success && res.data) {
-      const resultData = res.data.result || res.data
-      const resultsDict = resultData.results || resultData
-      
+      const resultsMap = parseBatchInterviewResults(res.data)
       const surveyResultsList = []
-      
+
       for (const interview of interviews) {
         const agentIdx = interview.agent_id
         const agent = profiles.value[agentIdx]
-        
-        let responseContent = t('step5.noResponse')
+        const raw = findResultForAgent(resultsMap, agentIdx)
+        const responseContent = extractInterviewReply(raw) || t('step5.noResponse')
 
-        if (typeof resultsDict === 'object' && !Array.isArray(resultsDict)) {
-          const redditKey = `reddit_${agentIdx}`
-          const twitterKey = `twitter_${agentIdx}`
-          const agentResult = resultsDict[redditKey] || resultsDict[twitterKey]
-          if (agentResult) {
-            responseContent = agentResult.response || agentResult.answer || t('step5.noResponse')
-          }
-        } else if (Array.isArray(resultsDict)) {
-          const matchedResult = resultsDict.find(r => r.agent_id === agentIdx)
-          if (matchedResult) {
-            responseContent = matchedResult.response || matchedResult.answer || t('step5.noResponse')
-          }
-        }
-        
         surveyResultsList.push({
           agent_id: agentIdx,
           agent_name: agent?.username || `Agent ${agentIdx}`,
@@ -823,14 +958,16 @@ const submitSurvey = async () => {
           answer: responseContent
         })
       }
-      
+
       surveyResults.value = surveyResultsList
       addLog(t('log.receivedReplies', { count: surveyResults.value.length }))
     } else {
       throw new Error(res.error || t('step5.requestFailed'))
     }
   } catch (err) {
-    addLog(t('log.surveySendFailed', { error: err.message }))
+    const msg = err?.message || String(err)
+    surveyError.value = t('step5.surveyFailed', { error: msg })
+    addLog(t('log.surveySendFailed', { error: msg }))
   } finally {
     isSurveying.value = false
   }
@@ -839,17 +976,23 @@ const submitSurvey = async () => {
 // Load Report Data
 const loadReportData = async () => {
   if (!props.reportId) return
-  
+
   try {
     addLog(t('log.loadReportData', { id: props.reportId }))
-    
-    // Get report info
+
     const reportRes = await getReport(props.reportId)
     if (reportRes.success && reportRes.data) {
-      // Load agent logs to get report outline and sections
+      reportMeta.value = reportRes.data
+      const outline = reportRes.data.outline
+      if (outline && typeof outline === 'object' && outline !== null) {
+        reportOutline.value = outline
+      }
       await loadAgentLogs()
+    } else {
+      reportMeta.value = null
     }
   } catch (err) {
+    reportMeta.value = null
     addLog(t('log.loadReportFailed', { error: err.message }))
   }
 }
@@ -929,6 +1072,7 @@ watch(() => props.simulationId, (newId) => {
 <style scoped>
 .interaction-panel {
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--doc-code-bg);
@@ -944,6 +1088,7 @@ watch(() => props.simulationId, (newId) => {
 /* Main Split Layout */
 .main-split-layout {
   flex: 1;
+  min-height: 0;
   display: flex;
   overflow: hidden;
   min-width: 0;
@@ -952,12 +1097,15 @@ watch(() => props.simulationId, (newId) => {
 .left-panel.report-style {
   width: 45%;
   min-width: 0;
+  min-height: 0;
   background: var(--doc-surface);
   border-right: 1px solid var(--doc-border);
+  overflow-x: auto;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  padding: 30px 50px 60px 50px;
+  box-sizing: border-box;
+  padding: clamp(16px, 4vw, 30px) clamp(16px, 4vw, 50px) 48px;
 }
 
 .left-panel::-webkit-scrollbar {
@@ -1061,9 +1209,11 @@ watch(() => props.simulationId, (newId) => {
   align-items: baseline;
   gap: 12px;
   transition: background-color 0.2s ease;
-  padding: 8px 12px;
-  margin: -8px -12px;
+  padding: 8px 10px;
+  margin: 0;
   border-radius: 8px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .section-header-row.clickable {
@@ -1122,8 +1272,12 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .section-body {
-  padding-left: 28px;
+  padding-left: 0;
+  padding-inline-start: min(28px, 4vw);
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Generated Content */
@@ -1252,6 +1406,7 @@ watch(() => props.simulationId, (newId) => {
 /* Right Panel - Interaction */
 .right-panel {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--doc-surface);
@@ -1264,6 +1419,7 @@ watch(() => props.simulationId, (newId) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 14px 20px;
   border-bottom: 1px solid var(--doc-border);
   background: linear-gradient(180deg, var(--doc-surface) 0%, var(--doc-bg) 100%);
@@ -1272,6 +1428,7 @@ watch(() => props.simulationId, (newId) => {
   top: 0;
   z-index: 20;
   overflow: visible;
+  row-gap: 10px;
 }
 
 .action-bar-header {
@@ -1313,7 +1470,9 @@ watch(() => props.simulationId, (newId) => {
   align-items: center;
   gap: 6px;
   flex: 1;
+  min-width: 0;
   justify-content: flex-end;
+  flex-wrap: wrap;
   overflow: visible;
 }
 
@@ -1362,12 +1521,15 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .agent-pill {
-  width: 200px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(320px, 100%);
   justify-content: space-between;
 }
 
 .agent-pill span {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1435,6 +1597,7 @@ watch(() => props.simulationId, (newId) => {
 /* Chat Container */
 .chat-container {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1458,8 +1621,8 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, var(--doc-text) 0%, var(--doc-text) 100%);
-  color: #FFFFFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #ffffff);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1610,8 +1773,8 @@ watch(() => props.simulationId, (newId) => {
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  background: linear-gradient(135deg, var(--doc-text) 0%, var(--doc-text) 100%);
-  color: #FFFFFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #ffffff);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1827,8 +1990,8 @@ watch(() => props.simulationId, (newId) => {
   height: 32px;
   min-width: 32px;
   min-height: 32px;
-  background: linear-gradient(135deg, var(--doc-text) 0%, var(--doc-text) 100%);
-  color: #FFFFFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #ffffff);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1867,6 +2030,7 @@ watch(() => props.simulationId, (newId) => {
 /* Chat Messages */
 .chat-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 24px;
   display: flex;
@@ -1882,6 +2046,8 @@ watch(() => props.simulationId, (newId) => {
   justify-content: center;
   gap: 16px;
   color: var(--doc-muted);
+  width: 100%;
+  min-height: 0;
 }
 
 .empty-icon {
@@ -1893,6 +2059,72 @@ watch(() => props.simulationId, (newId) => {
   text-align: center;
   max-width: 280px;
   line-height: 1.6;
+}
+
+.report-agent-starters {
+  width: 100%;
+  max-width: 36rem;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.starters-heading {
+  margin: 0 0 10px 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--doc-muted);
+}
+
+.starter-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.starter-chip {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--doc-border);
+  background: var(--doc-surface);
+  color: var(--doc-text);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.starter-chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--doc-accent) 40%, var(--doc-border));
+  background: var(--doc-upload-surface, var(--doc-surface));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--doc-text) 6%, transparent);
+}
+
+.starter-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.starter-chip__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.starter-chip__arrow {
+  flex-shrink: 0;
+  opacity: 0.4;
 }
 
 .chat-message {
@@ -2063,17 +2295,38 @@ watch(() => props.simulationId, (newId) => {
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Responsive: stack panels on narrow widths (split mode / small window) */
-@media (max-width: 1100px) {
+/* Responsive: stack panels (align with workbench break ~1280) */
+@media (max-width: 1280px) {
   .main-split-layout {
     flex-direction: column;
   }
 
   .left-panel.report-style {
     width: 100%;
+    max-width: 100%;
     border-right: none;
     border-bottom: 1px solid var(--doc-border);
-    padding: 22px 22px 28px 22px;
+    padding: 22px clamp(16px, 4vw, 28px) 28px;
+  }
+}
+
+/* Tighter action bar: allow pills to wrap without clipping */
+@media (max-width: 1280px) {
+  .action-bar {
+    padding: 12px clamp(12px, 2vw, 20px);
+  }
+  .action-bar-header {
+    min-width: 0;
+    flex: 1 1 140px;
+  }
+  .action-bar-tabs {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+  .tab-pill {
+    white-space: normal;
+    text-align: center;
+    line-height: 1.25;
   }
 }
 
@@ -2102,19 +2355,20 @@ watch(() => props.simulationId, (newId) => {
 .send-btn {
   width: 44px;
   height: 44px;
-  background: var(--doc-text);
-  color: #FFFFFF;
+  background: var(--doc-cta-primary-bg, #111827);
+  color: var(--doc-cta-primary-fg, #ffffff);
   border: none;
   border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s ease;
+  transition: background 0.2s ease, filter 0.2s ease;
+  flex-shrink: 0;
 }
 
 .send-btn:hover:not(:disabled) {
-  background: var(--doc-text);
+  filter: brightness(0.95);
 }
 
 .send-btn:disabled {
@@ -2133,11 +2387,15 @@ watch(() => props.simulationId, (newId) => {
 
 .survey-setup {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   padding: 24px;
   border-bottom: 1px solid var(--doc-border);
-  overflow: hidden;
+  /* Allow vertical scroll so Send Survey and inputs are never clipped */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .setup-section {
@@ -2177,9 +2435,10 @@ watch(() => props.simulationId, (newId) => {
 /* Agents Grid */
 .agents-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   gap: 10px;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 4px;
   align-content: start;
@@ -2326,17 +2585,29 @@ watch(() => props.simulationId, (newId) => {
   border-color: var(--doc-text);
 }
 
+.survey-error {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #b45309;
+}
+.survey-hint {
+  margin: 8px 0 0 0;
+  font-size: 12px;
+  color: var(--doc-muted);
+}
+
 .survey-submit-btn {
   width: 100%;
   padding: 14px 24px;
   font-size: 14px;
   font-weight: 600;
-  color: #FFFFFF;
-  background: var(--doc-text);
-  border: none;
+  color: var(--doc-cta-primary-fg, #ffffff);
+  background: var(--doc-cta-primary-bg, #111827);
+  border: 1px solid var(--doc-cta-primary-bg, #111827);
   border-radius: 8px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2345,20 +2616,24 @@ watch(() => props.simulationId, (newId) => {
 }
 
 .survey-submit-btn:hover:not(:disabled) {
-  background: var(--doc-text);
+  filter: brightness(0.95);
+  box-shadow: 0 4px 14px var(--doc-accent-soft, rgba(0, 0, 0, 0.12));
 }
 
 .survey-submit-btn:disabled {
   background: var(--doc-border);
   color: var(--doc-muted);
+  border-color: var(--doc-border);
   cursor: not-allowed;
+  filter: none;
+  box-shadow: none;
 }
 
 .loading-spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: var(--doc-surface);
+  border: 2px solid color-mix(in srgb, var(--doc-cta-primary-fg, #fff) 35%, transparent);
+  border-top-color: var(--doc-cta-primary-fg, #fff);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
