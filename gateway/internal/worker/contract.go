@@ -5,12 +5,24 @@ import "context"
 type Platform string
 
 const (
+	ProtocolVersion         = "1.0"
+	ProtocolVersionField    = "worker_protocol_version"
+	ProtocolName            = "go-mirofish-worker"
+	ProtocolNameField       = "worker_protocol_name"
+	ProtocolDirectionField  = "transport_role"
+	ProtocolRoleCommand     = "gateway_command"
+	ProtocolRoleResponse    = "worker_response"
+	ProtocolRoleWorkerState = "worker_runtime_state"
+)
+
+const (
 	PlatformTwitter  Platform = "twitter"
 	PlatformReddit   Platform = "reddit"
 	PlatformParallel Platform = "parallel"
 )
 
 type StartRequest struct {
+	WorkerProtocolVersion   string   `json:"worker_protocol_version,omitempty"`
 	SimulationID            string   `json:"simulation_id"`
 	Platform                Platform `json:"platform"`
 	MaxRounds               int      `json:"max_rounds,omitempty"`
@@ -70,18 +82,20 @@ type AllInterviewRequest struct {
 }
 
 type IPCResult struct {
-	Success   bool   `json:"success"`
-	Timestamp string `json:"timestamp,omitempty"`
-	Error     string `json:"error,omitempty"`
-	Result    any    `json:"result,omitempty"`
+	WorkerProtocolVersion string `json:"worker_protocol_version,omitempty"`
+	Success               bool   `json:"success"`
+	Timestamp             string `json:"timestamp,omitempty"`
+	Error                 string `json:"error,omitempty"`
+	Result                any    `json:"result,omitempty"`
 }
 
 type EnvStatus struct {
-	SimulationID     string `json:"simulation_id"`
-	EnvAlive         bool   `json:"env_alive"`
-	TwitterAvailable bool   `json:"twitter_available"`
-	RedditAvailable  bool   `json:"reddit_available"`
-	Message          string `json:"message"`
+	WorkerProtocolVersion string `json:"worker_protocol_version,omitempty"`
+	SimulationID          string `json:"simulation_id"`
+	EnvAlive              bool   `json:"env_alive"`
+	TwitterAvailable      bool   `json:"twitter_available"`
+	RedditAvailable       bool   `json:"reddit_available"`
+	Message               string `json:"message"`
 }
 
 type Bridge interface {
