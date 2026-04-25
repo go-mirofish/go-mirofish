@@ -151,7 +151,7 @@
             <span class="step-title">{{ $t('step1.buildComplete') }}</span>
           </div>
           <div class="step-status">
-            <span v-if="currentPhase >= 2" class="badge accent">{{ $t('step1.inProgress') }}</span>
+            <span v-if="currentPhase >= 2" class="badge success">{{ $t('step1.graphReadyForEnv') }}</span>
           </div>
         </div>
         
@@ -170,27 +170,22 @@
       </div>
     </div>
 
-    <!-- Bottom Info / Logs -->
-    <div class="system-logs">
-      <div class="log-header">
-        <span class="log-title">SYSTEM DASHBOARD</span>
-        <span class="log-id">{{ projectData?.project_id || 'NO_PROJECT' }}</span>
-      </div>
-      <div class="log-content" ref="logContent">
-        <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
-          <span class="log-time">{{ log.time }}</span>
-          <span class="log-msg">{{ log.msg }}</span>
-        </div>
-      </div>
-    </div>
+    <SystemTerminalSplit
+      panel-title="SYSTEM DASHBOARD"
+      :id-label="projectData?.project_id || 'NO_PROJECT'"
+      :logs="systemLogs"
+      :workflow-step="currentPhase >= 2 ? 2 : 1"
+      :pipeline-animating="currentPhase < 2"
+    />
   </div>
 </template>
 
 <script setup>
-import { computed, ref, watch, nextTick } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { createSimulation } from '../api/simulation'
+import SystemTerminalSplit from './SystemTerminalSplit.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -207,7 +202,6 @@ const props = defineProps({
 defineEmits(['next-step'])
 
 const selectedOntologyItem = ref(null)
-const logContent = ref(null)
 const creatingSimulation = ref(false)
 
 const handleEnterEnvSetup = async () => {
@@ -260,14 +254,6 @@ const formatDate = (dateStr) => {
   return d.toLocaleTimeString('en-US', { hour12: false }) + '.' + d.getMilliseconds()
 }
 
-// Auto-scroll logs
-watch(() => props.systemLogs.length, () => {
-  nextTick(() => {
-    if (logContent.value) {
-      logContent.value.scrollTop = logContent.value.scrollHeight
-    }
-  })
-})
 </script>
 
 <style scoped>
@@ -662,59 +648,4 @@ html[data-theme='dark'] .ontology-detail-overlay {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
-
-/* System Logs */
-.system-logs {
-  background: var(--doc-console-bg, #0a0a0c);
-  color: var(--doc-console-fg, #d4d4d8);
-  padding: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid var(--doc-console-border, #27272a);
-  flex-shrink: 0;
-}
-
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--doc-console-border, #333);
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  font-size: 10px;
-  color: var(--doc-console-muted, #9ca3af);
-}
-
-.log-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: 80px; /* Approx 4 lines visible */
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.log-content::-webkit-scrollbar {
-  width: 4px;
-}
-
-.log-content::-webkit-scrollbar-thumb {
-  background: var(--doc-console-scroll, #3f3f46);
-  border-radius: 2px;
-}
-
-.log-line {
-  font-size: 11px;
-  display: flex;
-  gap: 12px;
-  line-height: 1.5;
-}
-
-.log-time {
-  color: var(--doc-console-muted, #9ca3af);
-  min-width: 75px;
-}
-
-.log-msg {
-  color: var(--doc-console-fg, #d4d4d8);
-  word-break: break-all;
-}
 </style>
