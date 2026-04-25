@@ -105,6 +105,22 @@ func TestExecutorExecute(t *testing.T) {
 			},
 			expectErr: ErrInvalidResponse,
 		},
+		{
+			name: "json null content rejected (not fmt.Sprint nil)",
+			client: newHTTPClient(func(r *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(`{"model":"gpt","choices":[{"finish_reason":"stop","message":{"content":null}}]}`)),
+				}, nil
+			}),
+			request: ProviderRequest{
+				Model:       "gpt",
+				Messages:    []Message{{Role: RoleUser, Content: "hi"}},
+				MaxTokens:   32,
+				Temperature: 0,
+			},
+			expectErr: ErrInvalidResponse,
+		},
 	}
 
 	for _, tt := range tests {
