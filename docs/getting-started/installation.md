@@ -1,165 +1,124 @@
 # Installation
 
-For the public app ([gomirofish.vercel.app](https://gomirofish.vercel.app); **go.mirofish.ai** pending DNS), from zero to a running stack.
+**Canonical local development (only path documented as default):**
+
+1. **`make up`** — builds and runs the **Go gateway in Docker** on [http://127.0.0.1:3000](http://127.0.0.1:3000) (API, health, readiness, metrics). The default image does **not** embed the Vue app; the container expects your local Vite dev server.
+2. **`npm run dev`** (from the **repository root**) — starts **Vite** on [http://127.0.0.1:5173](http://127.0.0.1:5173) and proxies `/api`, `/health`, `/ready`, and `/metrics` to the gateway on :3000.
+
+**Use the UI at :5173** during development. The gateway on :3000 is the API; it can also reverse-proxy browser traffic to Vite if you open :3000, but the documented workflow is Vite on :5173.
 
 > [!NOTE]
-> **Prerequisites**
-> - **Python 3.11.x** on your machine when you run the backend from source (not 3.12+; backend deps such as `camel-oasis` do not install on newer Pythons yet; see `requires-python` in `backend/pyproject.toml`).
-> - **Node.js 18+** if you use the `npm` dev workflow (`npm run dev`).
-> - **LLM + Zep** keys in `.env` for the default cloud path, unless you go fully local. See [Ollama](../configuration/ollama.md) and [OpenAI-compatible providers](../configuration/providers.md).
-> - **[uv](https://docs.astral.sh/uv/)** is optional; the repo can create **`backend/.venv`** with `pip` via `npm run setup:backend` instead.
+> **Stack:** Go gateway (control plane, API, native simulation). Vue via local Vite in dev. There is no Python backend, no Flask, no `backend/.venv`.
 
-> [!IMPORTANT]
-> Use **`backend/.venv` only**. Do not use a separate `.venv` at the **repository root**. Wrong Python version? Delete `backend/.venv` and run `npm run setup:backend` again.
+**Optional all-in-one Docker image (static UI inside the container, no local Node):**  
+`docker compose -f docker-compose.release.yml up -d --build` — then open [http://localhost:3000](http://localhost:3000) for both UI and API. Use for demos or hosts without a Node toolchain, not the default dev loop.
 
-## System requirements (summary)
+---
 
-| Item | Notes |
-| --- | --- |
-| OS | Windows, macOS, or Linux (64-bit) |
-| RAM | 4GB+; 8GB+ for heavier runs |
-| Python | **3.11.x** for local backend (see above) |
-| Node | 18+ for `npm run dev` / `npm run build` |
-| Go | 1.21+ only to **build** the gateway (`gateway/bin/`) or use `./start.sh` / `start.bat` |
-| Docker | Optional: full stack without local Node/Go (see below) |
-
-## 1. Get the code
+## 1. Clone the repository
 
 ```bash
 git clone https://github.com/go-mirofish/go-mirofish.git
 cd go-mirofish
 ```
 
-## 2. Configure `.env`
+## 2. Create `.env`
 
 ```bash
 cp .env.example .env
 ```
 
-Set at least **`LLM_API_KEY`** and **`ZEP_API_KEY`**. Optional **`LLM_BOOST_*`** lines: if you do not use them, **leave them out** of `.env` so the backend does not read empty boost config.
+| Variable | Required? | Notes |
+| --- | --- | --- |
+| `LLM_API_KEY` | Yes (default cloud path) | For the LLM route. |
+| `ZEP_API_KEY` | Yes (default cloud path) | For graph memory. |
+| `VITE_GATEWAY_PROXY_TARGET` | Optional | Defaults to `http://127.0.0.1:3000` in `frontend/vite.config.js` — must match the Docker gateway port. |
 
-## 3. Run with Docker Compose
+> [!NOTE]
+> Optional lines you are not using should be left out of `.env` rather than set to empty.
 
-From the repo root:
-
-```bash
-docker compose up --build -d
-```
-
-- UI / gateway: [http://localhost:3000](http://localhost:3000)  
-- Backend (in Compose): `http://backend:5001`  
-Compose reads `.env` at the project root.
-
-## 4. Run from source (development)
-
-**Install once (Node, frontend, backend):**
+## 3. Install frontend dependencies (one-time, for `npm run dev`)
 
 ```bash
-npm run setup:all
+npm run setup
+# or: npm install --prefix frontend
 ```
 
-**Run backend + frontend:**
+**Requirements:** [Docker](https://docs.docker.com/get-docker/) with Compose, and **Node 18+** for local Vite.
+
+## 4. Start the gateway in Docker
+
+```bash
+make up
+```
+
+| Command | What it does |
+| --- | --- |
+| `make up` | `docker compose up -d --build` — `target: dev` (gateway only). |
+| `make down` / `make logs` | Stop the stack or follow logs. |
+| `make up-release` | Same as `docker compose -f docker-compose.release.yml up -d --build` — all-in-one image with static UI (not the default dev path). |
+
+| URL | Role |
+| --- | --- |
+| [http://127.0.0.1:3000/health](http://127.0.0.1:3000/health) | Gateway health (`"stack":"go"`, `"python_backend":"removed"`) |
+| [http://127.0.0.1:3000/ready](http://127.0.0.1:3000/ready) | Readiness |
+
+## 5. Start the local frontend (second terminal)
 
 ```bash
 npm run dev
 ```
 
-- Backend: [http://localhost:5001](http://localhost:5001) (`npm run backend`)  
-- Frontend (Vite): [http://localhost:3000](http://localhost:3000) (`npm run frontend`)  
+Open **[http://127.0.0.1:5173](http://127.0.0.1:5173)**. API calls from the app go through Vite’s proxy to the Docker gateway on :3000.
 
-`npm run backend` uses `scripts/dev/run-backend.cjs`: it prefers **`backend/.venv`**, else **`uv run`** if `uv` is on your `PATH`. You usually do **not** need to `activate` the venv for day-to-day work.
-
-### Python, uv, and venv
-
-| Task | Command |
+| Shortcut | Same as |
 | --- | --- |
-| Create or refresh backend deps (from **repo root**) | `npm run setup:backend` runs `uv sync` in `backend/` if `uv` exists, otherwise **pip** into `backend/.venv` (see `scripts/dev/setup-backend.cjs`) |
-| With **uv** only | `cd backend && uv sync` (if needed: `uv python install 3.11`) |
-| Run the API | `npm run backend` or `cd backend && uv run python run.py` |
-| **Activate** the venv (only for a manual shell) | See table below. Paths are always `backend/.venv` |
+| `make dev` | `bash scripts/dev/frontend.sh` (Vite only) |
+| `make up-release` | All-in-one Docker image (`docker-compose.release.yml`) — static UI in container |
+| `make gateway` | **Non-default:** local Go gateway via `scripts/dev/run-gateway.cjs` for debugging only. The documented workflow is **`make up`** (Docker). |
 
-| Shell | Activate |
-| --- | --- |
-| macOS / Linux (bash, zsh) | `source backend/.venv/bin/activate` |
-| Windows (Git Bash) | `source backend/.venv/Scripts/activate` |
-| Windows (cmd) | `backend\.venv\Scripts\activate.bat` |
-| Windows (PowerShell) | `backend\.venv\Scripts\Activate.ps1` |
+## 6. (Non-default) Run the Go gateway on the host
 
-After activation, from **`backend/`**: e.g. `python -m pytest`, `python run.py`.
+**This is not the canonical development path.** Use only for stepping through the gateway in a debugger. The supported API surface for day-to-day work is **`make up`**.
 
-> [!NOTE]
-> **Git hooks (Husky)** use the same rule as the CLI: `uv` on `PATH` first, else `backend/.venv`. Hooks add `$HOME/.local/bin` and `$HOME/.cargo/bin` to `PATH`. If a hook says the env is missing, run `npm run setup:backend` from the repo root, then `npm install` (for Husky) if you have not already.
+After `cp .env`, `make gateway` runs the gateway on the host with `GATEWAY_PORT=3000` and `FRONTEND_DEV_URL=http://127.0.0.1:5173`. Never run Docker `make up` and `make gateway` at the same time on :3000.
 
-## 5. Local gateway + backend (`./start.sh` / `start.bat`)
-
-No Node dev server: build the **Go** gateway, build the **frontend** for `frontend/dist/`, then start.
-
-```bash
-npm run build:gateway
-npm run build
-```
-
-**Linux / macOS:** `./start.sh`  
-**Windows:** `.\start.bat`
-
-Expects: Python **3.11.x**, binary at `gateway/bin/go-mirofish-gateway` (or `gateway\bin\go-mirofish-gateway.exe`), and `frontend/dist/index.html`. Build the gateway manually if you prefer:
-
-The Go module lives under **`gateway/`** (not the repo root). From the **repo root**:
-
-```bash
-mkdir -p gateway/bin
-go -C gateway build -o bin/go-mirofish-gateway ./cmd/mirofish-gateway
-```
-
-**Windows (PowerShell),** from the repo root:
-
-```powershell
-New-Item -ItemType Directory -Force -Path gateway/bin | Out-Null
-go -C gateway build -o bin/go-mirofish-gateway.exe ./cmd/mirofish-gateway
-```
-
-Or run **`npm run build:gateway`** (writes to `gateway/bin/`).
+---
 
 ## Troubleshooting
 
-| Symptom | What to do |
+| Symptom | Fix |
 | --- | --- |
-| `camel-oasis` / “no matching distribution” | You are on **Python 3.12+**. Install **3.11.x**, remove `backend/.venv`, run `npm run setup:backend`. |
-| `uv` is not recognized | **Optional:** use `npm run setup:backend` (see [Python, uv, and venv](#python-uv-and-venv)). |
-| `vite` is not recognized | Run `npm run setup` or `npm install` at root and `npm install --prefix frontend` so `frontend/node_modules` exists. |
-| Prebuilt gateway missing | `npm run build:gateway` or `go build` as above; ensure `frontend/dist` exists (`npm run build`). |
-| Wrong venv path | Only **`backend/.venv`**. See [Python, uv, and venv](#python-uv-and-venv). |
+| `Network Error` / API failures in the browser | Ensure `make up` succeeded and [http://127.0.0.1:3000/health](http://127.0.0.1:3000/health) returns JSON. Then run `npm run dev`. |
+| Port **3000** in use | Stop the other process or change the host port in `docker-compose.yml` and set `VITE_GATEWAY_PROXY_TARGET` to match. |
+| Port **5173** in use | Set a different Vite port: `npm run dev -- --port 5174` and set `FRONTEND_DEV_URL` in Docker to `http://host.docker.internal:5174` (see `docker-compose.yml`). |
+| `vite` not found | `npm run setup` from the repo root. |
+| Linux: gateway cannot reach Vite | `host.docker.internal` is set via `extra_hosts` in `docker-compose.yml`. |
 
 ## Verify
 
-1. Open [http://localhost:3000](http://localhost:3000) (dev or gateway path).  
-2. Check health: [http://localhost:5001/health](http://localhost:5001/health) (dev backend) or [http://localhost:3000/health](http://localhost:3000/health) (through the gateway when using `start.sh`).
+| Check | URL |
+| --- | --- |
+| UI (dev) | [http://127.0.0.1:5173](http://127.0.0.1:5173) |
+| Gateway health | [http://127.0.0.1:3000/health](http://127.0.0.1:3000/health) |
+
+## Benchmarks
+
+Requires the gateway listening (after **`make up`**; `make gateway` only if you deliberately use a host-side gateway):
+
+```bash
+make benchmark-run    # BENCH_BASE_URL default http://127.0.0.1:3000
+make benchmark-live   # local gateway + built frontend; writes under benchmark/results/
+```
+
+| Make target | What it does |
+| --- | --- |
+| `make benchmark-run` | Load/stress/soak against `BENCH_BASE_URL` |
+| `make test-all` | `go vet` + all Go tests |
+
+Artifacts: `benchmark/results/benchmarks/benchmark.json`, `benchmark/results/api-wiring/api-wiring-report.json`, and `docs/report/benchmark-report.md` (from `make benchmark-live` / `go run ./cmd/mirofish-hybrid live-benchmark`) when generated.
 
 ## Next steps
 
-- [Ollama (local LLM)](../configuration/ollama.md)  
-- [OpenAI-compatible providers](../configuration/providers.md)  
-- Deeper **.env** reference on [gomirofish.vercel.app](https://gomirofish.vercel.app) (and go.mirofish.ai when live) as docs expand  
-
-## Examples and benchmarks
-
-The repo now ships a local-first example runner:
-
-```bash
-go run ./gateway/cmd/go-mirofish-examples --list
-```
-
-Common commands:
-
-```bash
-go run ./gateway/cmd/go-mirofish-examples --all --smoke-only --profile small
-go run ./gateway/cmd/go-mirofish-examples --all --bench-only --profile medium
-go run ./gateway/cmd/go-mirofish-examples --example product-launch-war-room --profile medium
-go run ./gateway/cmd/go-mirofish-examples --compare docs/bundled-benchmarks/product-launch__small__latest.json,docs/bundled-benchmarks/literary-sim__small__latest.json
-```
-
-Outputs are written under:
-
-- `examples/*/artifacts/<profile>/`
-- `benchmark/results/` (local runs; often gitignored)
-- `docs/bundled-benchmarks/` — committed short-name JSON for the in-app benchmark report (see `docs/bundled-benchmarks/README.md`)
+- [Ollama (local LLM)](../configuration/ollama.md)
+- [OpenAI-compatible providers](../configuration/providers.md)
