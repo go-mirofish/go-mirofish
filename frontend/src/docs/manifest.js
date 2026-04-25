@@ -91,7 +91,14 @@ export const DOCS_GROUPS = [
         path: '/docs/roadmap',
         type: 'page',
         componentName: 'DocsRoadmap',
-        sourcePath: 'docs/roadmap.md',
+        sourcePath: 'docs/roadmap/roadmap.md',
+      },
+      {
+        key: 'future-consideration',
+        titleKey: 'docs.navFutureConsideration',
+        path: '/docs/future-consideration',
+        type: 'markdown',
+        sourcePath: 'docs/roadmap/future-consideration.md',
       },
     ],
   },
@@ -112,4 +119,3 @@ export function toEditUrl(sourcePath) {
   if (!sourcePath) return null
   return `${DOCS_REPO_EDIT_BASE}${sourcePath}`
 }
-
