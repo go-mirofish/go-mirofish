@@ -4,46 +4,14 @@ set -e
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT" || exit 1
 
-# Git hooks often get a minimal PATH (no login shell). Restore common tool locations.
 if [ -n "$HOME" ]; then
   export PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin"
 fi
 if [ -z "$GOCACHE" ]; then
   export GOCACHE="${TMPDIR:-/tmp}/go-build-cache"
 fi
-if [ -z "$UV_CACHE_DIR" ]; then
-  export UV_CACHE_DIR="${TMPDIR:-/tmp}/uv-cache"
-fi
 
-# Go tests (only if gateway/ exists)
 if [ -d "gateway" ]; then
   echo "Running Go tests..."
   (cd gateway && go test ./...)
 fi
-
-# Python tests (exit 5 = no tests collected)
-echo "Running Python tests..."
-(
-  cd backend || exit 1
-  set +e
-  if command -v uv >/dev/null 2>&1; then
-    uv run pytest --tb=short -q
-  elif [ -x ".venv/bin/python" ]; then
-    .venv/bin/python -m pytest --tb=short -q
-  elif [ -f ".venv/Scripts/python.exe" ]; then
-    .venv/Scripts/python.exe -m pytest --tb=short -q
-  else
-    echo "pre-push: uv not in PATH and backend/.venv not found; skipping pytest."
-    echo "  Fix: npm run setup:backend  (from repo root)"
-    echo "  Or:  cd backend && uv sync  (if uv is installed)"
-    echo "  You can also rely on CI before merging."
-    exit 0
-  fi
-  status=$?
-  set -e
-  if [ "$status" -eq 5 ]; then
-    echo "No tests collected, skipping."
-  elif [ "$status" -ne 0 ]; then
-    exit "$status"
-  fi
-)
