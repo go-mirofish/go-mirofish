@@ -276,24 +276,18 @@
       </div>
     </div>
 
-    <!-- Bottom Info / Logs -->
-    <div class="system-logs">
-      <div class="log-header">
-        <span class="log-title">SIMULATION MONITOR</span>
-        <span class="log-id">{{ simulationId || 'NO_SIMULATION' }}</span>
-      </div>
-      <div class="log-content" ref="logContent">
-        <div class="log-line" v-for="(log, idx) in systemLogs" :key="idx">
-          <span class="log-time">{{ log.time }}</span>
-          <span class="log-msg">{{ log.msg }}</span>
-        </div>
-      </div>
-    </div>
+    <SystemTerminalSplit
+      panel-title="SIMULATION MONITOR"
+      :id-label="simulationId || 'NO_SIMULATION'"
+      :logs="systemLogs"
+      :workflow-step="3"
+      :pipeline-animating="phase < 2 || isStarting"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -303,7 +297,8 @@ import {
   getRunStatus,
   getRunStatusDetail
 } from '../api/simulation'
-import { generateReport } from '../api/report'
+import { generateReport, checkReportForSimulation } from '../api/report'
+import SystemTerminalSplit from './SystemTerminalSplit.vue'
 
 const { t } = useI18n()
 
@@ -595,6 +590,13 @@ const checkPlatformsCompleted = (data) => {
   return true
 }
 
+/** True when the engine finished, or all enabled platforms have completed their target rounds. */
+const isRunFullyComplete = (data) => {
+  if (!data) return false
+  if (data.runner_status === 'completed') return true
+  return checkPlatformsCompleted(data)
+}
+
 const fetchRunStatusDetail = async () => {
   if (!props.simulationId) return
   
@@ -621,6 +623,29 @@ const fetchRunStatusDetail = async () => {
     }
   } catch (err) {
     console.warn('Failed to fetch detailed status:', err)
+  }
+}
+
+/** If the run already finished all platforms (or runner is completed), load state and skip startSimulation. */
+const hydrateIfRunFinished = async () => {
+  if (!props.simulationId) return false
+  try {
+    const res = await getRunStatus(props.simulationId)
+    if (!res?.success || !res.data) return false
+    const data = res.data
+    if (!isRunFullyComplete(data)) return false
+
+    addLog(t('log.simResumedAllRoundsComplete'))
+    runStatus.value = data
+    prevTwitterRound.value = data.twitter_current_round || 0
+    prevRedditRound.value = data.reddit_current_round || 0
+    phase.value = 2
+    await fetchRunStatusDetail()
+    emit('update-status', 'completed')
+    return true
+  } catch (e) {
+    console.warn('hydrateIfRunFinished:', e)
+    return false
   }
 }
 
@@ -684,6 +709,22 @@ const handleNextStep = async () => {
     addLog(t('log.reportRequestSent'))
     return
   }
+
+  try {
+    const existing = await checkReportForSimulation(props.simulationId)
+    if (
+      existing?.success &&
+      existing.data?.has_report &&
+      existing.data?.report_id &&
+      String(existing.data.report_status) === 'completed'
+    ) {
+      addLog(t('log.reportOpenExisting'))
+      router.push({ name: 'Report', params: { reportId: existing.data.report_id } })
+      return
+    }
+  } catch (e) {
+    console.warn('checkReportForSimulation:', e)
+  }
   
   isGeneratingReport.value = true
   addLog(t('log.startingReportGen'))
@@ -709,19 +750,11 @@ const handleNextStep = async () => {
   }
 }
 
-// Scroll log to bottom
-const logContent = ref(null)
-watch(() => props.systemLogs?.length, () => {
-  nextTick(() => {
-    if (logContent.value) {
-      logContent.value.scrollTop = logContent.value.scrollHeight
-    }
-  })
-})
-
-onMounted(() => {
+onMounted(async () => {
   addLog(t('log.step3Init'))
-  if (props.simulationId) {
+  if (!props.simulationId) return
+  const hydrated = await hydrateIfRunFinished()
+  if (!hydrated) {
     doStartSimulation()
   }
 })
@@ -1275,47 +1308,6 @@ onUnmounted(() => {
   opacity: 0;
 }
 
-/* Logs */
-.system-logs {
-  background: var(--doc-console-bg, #0a0a0c);
-  color: var(--doc-console-fg, #d4d4d8);
-  padding: 16px;
-  font-family: 'JetBrains Mono', monospace;
-  border-top: 1px solid var(--doc-console-border, #27272a);
-  flex-shrink: 0;
-}
-
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  border-bottom: 1px solid var(--doc-console-border, #333);
-  padding-bottom: 8px;
-  margin-bottom: 8px;
-  font-size: 10px;
-  color: var(--doc-console-muted, #9ca3af);
-}
-
-.log-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  height: 100px;
-  overflow-y: auto;
-  padding-right: 4px;
-}
-
-.log-content::-webkit-scrollbar { width: 4px; }
-.log-content::-webkit-scrollbar-thumb { background: var(--doc-console-scroll, #3f3f46); border-radius: 2px; }
-
-.log-line {
-  font-size: 11px;
-  display: flex;
-  gap: 12px;
-  line-height: 1.5;
-}
-
-.log-time { color: var(--doc-console-muted, #9ca3af); min-width: 75px; }
-.log-msg { color: var(--doc-console-fg, #d4d4d8); word-break: break-all; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Loading spinner for button */
