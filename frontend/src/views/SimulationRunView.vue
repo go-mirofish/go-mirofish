@@ -45,6 +45,7 @@
           :loading="graphLoading"
           :currentPhase="3"
           :isSimulating="isSimulating"
+          :loadError="graphLoadError"
           @refresh="refreshGraph"
           @toggle-maximize="toggleMaximize('graph')"
         />
@@ -97,6 +98,7 @@ const maxRounds = ref(route.query.maxRounds ? parseInt(route.query.maxRounds) : 
 const minutesPerRound = ref(30) // Default to 30 minutes per round
 const projectData = ref(null)
 const graphData = ref(null)
+const graphLoadError = ref('')
 const graphLoading = ref(false)
 const systemLogs = ref([])
 const currentStatus = ref('processing') // processing | completed | error
@@ -249,16 +251,18 @@ const loadGraph = async (graphId) => {
   if (!isSimulating.value) {
     graphLoading.value = true
   }
-  
+  graphLoadError.value = ''
   try {
     const res = await getGraphData(graphId)
     if (res.success) {
       graphData.value = res.data
+      graphLoadError.value = ''
       if (!isSimulating.value) {
         addLog(t('log.graphDataLoadSuccess'))
       }
     }
   } catch (err) {
+    graphLoadError.value = err.message || String(err)
     addLog(t('log.graphLoadFailed', { error: err.message }))
   } finally {
     graphLoading.value = false
