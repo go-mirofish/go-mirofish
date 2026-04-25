@@ -15,6 +15,8 @@ import { Analytics } from '@vercel/analytics/vue'
 }
 
 #app {
+  min-width: 0;
+  width: 100%;
   font-family: var(--doc-font-sans, 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
