@@ -1,0 +1,66 @@
+/**
+ * App-wide responsive baseline. Loaded after doc-layout.css.
+ * Goals: no horizontal page scroll, flex children that can shrink, readable overflow on code/tables.
+ */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  overflow-x: clip;
+}
+
+#app {
+  min-width: 0;
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+}
+
+/* Block media should never stretch the viewport horizontally */
+img,
+video,
+canvas {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Scroll wide code inside its box, not the page */
+pre,
+.code-block,
+.docs-article--md pre {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prose: long tokens / paths */
+.doc-prose,
+.doc-lead,
+.docs-article--md p,
+.docs-article--md li,
+.generated-content,
+.doc-history-wrap {
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
+
+/* Tables in markdown: keep inside column */
+.docs-article--md table,
+.doc-article table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Router root often fills the viewport; allow nested flex to shrink */
+.doc-workbench,
+.doc-site,
+.process-page,
+.docs-shell {
+  min-width: 0;
+}
