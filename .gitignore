@@ -51,6 +51,9 @@ htmlcov/
 .cursor/
 .claude/
 .omx/
+.agents/
+.kiro/
+.windsurf/
 
 # Local docs and test programs
 mydoc/
