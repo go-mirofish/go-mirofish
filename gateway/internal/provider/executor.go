@@ -248,6 +248,11 @@ func (e *OpenAIExecutor) doCompletion(ctx context.Context, payload completionReq
 }
 
 func normalizeContent(content any) string {
+	// JSON null unmarshals to a typed nil interface — fmt.Sprint(nil) is the literal "<nil>", which
+	// is not valid JSON and breaks ontology parsing downstream.
+	if content == nil {
+		return ""
+	}
 	switch value := content.(type) {
 	case string:
 		return strings.TrimSpace(value)
@@ -266,7 +271,11 @@ func normalizeContent(content any) string {
 		}
 		return strings.TrimSpace(strings.Join(parts, "\n"))
 	default:
-		return strings.TrimSpace(fmt.Sprint(content))
+		s := strings.TrimSpace(fmt.Sprint(content))
+		if s == "" || s == "<nil>" {
+			return ""
+		}
+		return s
 	}
 }
 
