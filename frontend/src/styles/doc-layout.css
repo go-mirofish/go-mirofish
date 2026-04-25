@@ -101,34 +101,51 @@ html[data-theme='dark'] {
 
 /* Workbench: MainView + routes that reuse graph | split | workbench layout (steps 1–5) */
 .doc-workbench {
+  min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--doc-bg, #f4f4f5);
   overflow: hidden;
+  min-width: 0;
   font-family: var(--doc-font-sans, 'Inter', system-ui, sans-serif);
   color: var(--doc-text);
 }
 
 .doc-workbench .app-header {
-  height: 60px;
-  border-bottom: 1px solid var(--doc-border, #e5e7eb);
-  display: flex;
+  /* Grid keeps Graph/Split/Workbench centered without overlapping side slots (breaks at ~1000px with position:absolute). */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
+  gap: 8px 12px;
+  min-height: 60px;
+  height: auto;
+  max-width: 100%;
+  min-width: 0;
+  border-bottom: 1px solid var(--doc-border, #e5e7eb);
+  padding: 8px 16px;
   background: var(--doc-topbar-surface, rgba(255, 255, 255, 0.85));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   z-index: 100;
   position: relative;
   color: var(--doc-text);
+  box-sizing: border-box;
+}
+
+.doc-workbench .header-left {
+  justify-self: start;
+  min-width: 0;
 }
 
 .doc-workbench .header-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
+  transform: none;
+  justify-self: center;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .doc-workbench .brand {
@@ -142,10 +159,15 @@ html[data-theme='dark'] {
 
 .doc-workbench .view-switcher {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
+  min-width: 0;
   background: var(--doc-workbench-mid, #f5f5f5);
   padding: 4px;
   border-radius: 6px;
   gap: 4px;
+  box-sizing: border-box;
 }
 
 .doc-workbench .switch-btn {
@@ -172,8 +194,13 @@ html[data-theme='dark'] .doc-workbench .switch-btn.active {
 
 .doc-workbench .header-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  justify-content: flex-end;
+  gap: 8px 12px;
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .doc-workbench .workflow-step {
@@ -181,6 +208,8 @@ html[data-theme='dark'] .doc-workbench .switch-btn.active {
   align-items: center;
   gap: 8px;
   font-size: 14px;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .doc-workbench .step-num {
@@ -241,10 +270,22 @@ html[data-theme='dark'] .doc-workbench .switch-btn.active {
 }
 
 .doc-workbench .content-area {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   position: relative;
   overflow: hidden;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Previous/Next step bar: always participates in flex layout, wraps instead of clipping */
+.doc-workbench .pipeline-step-nav {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 0 auto;
+  box-sizing: border-box;
 }
 
 .doc-workbench .panel-wrapper {
@@ -780,15 +821,17 @@ a.doc-github-stars {
   color: var(--doc-text);
 }
 
-/* Workbench (split / graph): stack on narrow viewports; override inline panel widths from views */
-@media (max-width: 900px) {
+/* Workbench: stack graph + workbench on medium/narrow viewports; fluid from ~desktop down */
+@media (max-width: 1280px) {
   .doc-workbench .content-area {
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
   .doc-workbench .panel-wrapper {
     width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
     min-height: min(50vh, 480px) !important;
     max-height: none;
@@ -802,32 +845,19 @@ a.doc-github-stars {
     min-height: min(45vh, 360px) !important;
   }
   .doc-workbench .app-header {
-    flex-wrap: wrap;
-    height: auto;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr);
     min-height: 52px;
     padding: 8px 12px;
-    row-gap: 6px;
-    column-gap: 8px;
+    row-gap: 8px;
   }
   .doc-workbench .header-left {
-    flex: 0 0 auto;
-  }
-  .doc-workbench .header-right {
-    flex: 1 1 auto;
-    flex-wrap: wrap;
-    justify-content: flex-end;
     min-width: 0;
   }
-  .doc-workbench .header-center {
-    position: static;
-    transform: none;
-    order: 2;
-    width: 100%;
-    display: flex;
-    justify-content: center;
+  .doc-workbench .header-right {
+    min-width: 0;
   }
   .doc-workbench .brand {
-    font-size: 1rem;
+    font-size: clamp(0.8rem, 2.5vw, 1.05rem);
   }
   .doc-workbench .view-switcher {
     flex-wrap: wrap;
@@ -843,13 +873,37 @@ a.doc-github-stars {
   }
 }
 
-/* Very small phones */
-@media (max-width: 380px) {
-  .doc-workbench .step-name {
-    display: none;
+/* Single-column header: no overlapping; everything wraps into vertical bands */
+@media (max-width: 720px) {
+  .doc-workbench .app-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .doc-workbench .header-left,
+  .doc-workbench .header-center,
+  .doc-workbench .header-right {
+    justify-self: auto;
   }
   .doc-workbench .header-right {
-    gap: 8px;
+    justify-content: space-between;
+    width: 100%;
+  }
+}
+
+/* Very small viewports: keep step label, shrink (do not hide) */
+@media (max-width: 380px) {
+  .doc-workbench .workflow-step {
+    flex-wrap: wrap;
+  }
+  .doc-workbench .step-name {
+    font-size: 10px;
+    max-width: 12rem;
+    line-height: 1.2;
+  }
+  .doc-workbench .header-right {
+    gap: 6px 8px;
   }
 }
 
@@ -1227,4 +1281,26 @@ a.doc-github-stars {
 .doc-site-footer--compact {
   padding: 0.45rem 1rem 0.55rem;
   font-size: 0.7rem;
+}
+
+/* Home + marketing: tighter gutters on small phones */
+@media (max-width: 640px) {
+  .doc-page {
+    padding: 1.25rem 0.85rem 2.5rem;
+  }
+  .doc-topbar-inner {
+    padding: 0.6rem 0.75rem;
+  }
+  .doc-article {
+    padding: 1.1rem;
+  }
+  .doc-hero-cta {
+    justify-content: center;
+  }
+  .doc-hero-media {
+    align-items: center;
+  }
+  .doc-metrics {
+    flex-direction: column;
+  }
 }
