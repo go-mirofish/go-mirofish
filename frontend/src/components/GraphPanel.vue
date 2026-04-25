@@ -196,9 +196,10 @@
         <p>{{ $t('graph.graphDataLoading') }}</p>
       </div>
       
-      <div v-else class="graph-state">
+      <div v-else class="graph-state" :class="{ 'graph-state--error': !!loadError }">
         <div class="empty-icon">❖</div>
-        <p class="empty-text">{{ $t('graph.waitingOntology') }}</p>
+        <p v-if="loadError" class="empty-text empty-text--error">{{ loadError }}</p>
+        <p v-else class="empty-text">{{ $t('graph.waitingOntology') }}</p>
       </div>
     </div>
 
@@ -225,13 +226,16 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import * as d3 from 'd3'
+import { createTimeline, stagger } from 'animejs'
 import { themeResolved } from '../composables/theme.js'
 
 const props = defineProps({
   graphData: Object,
   loading: Boolean,
   currentPhase: Number,
-  isSimulating: Boolean
+  isSimulating: Boolean,
+  /** Set when GET /api/graph/data failed (e.g. 500) so we do not show "waiting for ontology" misleadingly. */
+  loadError: { type: String, default: '' }
 })
 
 const emit = defineEmits(['refresh', 'toggle-maximize'])
@@ -265,12 +269,20 @@ const toggleSelfLoop = (id) => {
   expandedSelfLoops.value = newSet
 }
 
+/** Stable id for API nodes (Zep / gateway may use uuid or id). */
+function graphNodeId(n) {
+  if (!n || typeof n !== 'object') return ''
+  const id = n.uuid ?? n.id ?? n.node_id
+  return id != null && String(id).trim() !== '' ? String(id).trim() : ''
+}
+
 const entityTypes = computed(() => {
   if (!props.graphData?.nodes) return []
   const typeMap = {}
   const colors = ['#00ADD8', '#004E89', '#7B2D8E', '#1A936F', '#C5283D', '#E9724C', '#3498db', '#9b59b6', '#27ae60', '#f39c12']
   
   props.graphData.nodes.forEach(node => {
+    if (!graphNodeId(node)) return
     const type = node.labels?.find(l => l !== 'Entity') || 'Entity'
     if (!typeMap[type]) {
       typeMap[type] = { name: type, count: 0, color: colors[Object.keys(typeMap).length % colors.length] }
@@ -305,17 +317,118 @@ const closeDetailPanel = () => {
 let currentSimulation = null
 let linkLabelsRef = null
 let linkLabelBgRef = null
+let graphResizeObserver = null
+/** Intro timeline (anime.js); reverted before each re-render */
+let graphIntroTimeline = null
+
+function revertGraphIntro() {
+  if (graphIntroTimeline) {
+    try {
+      graphIntroTimeline.revert()
+    } catch {
+      /* noop */
+    }
+    graphIntroTimeline = null
+  }
+}
+
+/**
+ * Staggered fade / scale-in for nodes, edges, and labels (anime.js v4).
+ */
+function playGraphIntro({
+  circleNodes,
+  pathNodes,
+  textLinkLabels,
+  rectLinkBg,
+  textNodeLabels
+}) {
+  revertGraphIntro()
+  if (!circleNodes?.length) return
+
+  const tl = createTimeline({ autoplay: true })
+  tl.add(circleNodes, {
+    opacity: [0, 1],
+    r: [4, 10],
+    duration: 880,
+    ease: 'outCubic',
+    delay: stagger(22, { from: 'center' })
+  })
+  if (pathNodes?.length) {
+    tl.add(
+      pathNodes,
+      {
+        opacity: [0, 1],
+        duration: 580,
+        ease: 'outSine',
+        delay: stagger(5, { from: 'first' })
+      },
+      0
+    )
+  }
+  if (textNodeLabels?.length) {
+    tl.add(
+      textNodeLabels,
+      {
+        opacity: [0, 1],
+        duration: 450,
+        ease: 'outSine',
+        delay: stagger(16, { from: 'center' })
+      },
+      90
+    )
+  }
+  if (textLinkLabels?.length) {
+    tl.add(
+      textLinkLabels,
+      {
+        opacity: [0, 1],
+        duration: 380,
+        ease: 'outSine',
+        delay: stagger(4, { from: 'first' })
+      },
+      200
+    )
+  }
+  if (rectLinkBg?.length) {
+    tl.add(
+      rectLinkBg,
+      {
+        opacity: [0, 1],
+        duration: 380,
+        ease: 'outSine',
+        delay: stagger(4, { from: 'first' })
+      },
+      200
+    )
+  }
+  graphIntroTimeline = tl
+}
+
+function graphContainerSize() {
+  const el = graphContainer.value
+  if (!el) return { width: 0, height: 0 }
+  const r = el.getBoundingClientRect()
+  const width = Math.max(0, Math.floor(r.width || el.clientWidth))
+  const height = Math.max(0, Math.floor(r.height || el.clientHeight))
+  return { width, height }
+}
 
 const renderGraph = () => {
   if (!graphSvg.value || !props.graphData) return
+
+  const container = graphContainer.value
+  if (!container) return
+
+  const { width, height } = graphContainerSize()
+  if (width < 12 || height < 12) {
+    return
+  }
+
+  revertGraphIntro()
   
   if (currentSimulation) {
     currentSimulation.stop()
   }
-  
-  const container = graphContainer.value
-  const width = container.clientWidth
-  const height = container.clientHeight
   
   const svg = d3.select(graphSvg.value)
     .attr('width', width)
@@ -324,21 +437,27 @@ const renderGraph = () => {
     
   svg.selectAll('*').remove()
   
-  const nodesData = props.graphData.nodes || []
+  const nodesData = (props.graphData.nodes || []).filter((n) => graphNodeId(n))
   const edgesData = props.graphData.edges || []
   
   if (nodesData.length === 0) return
 
   // Prep data
   const nodeMap = {}
-  nodesData.forEach(n => nodeMap[n.uuid] = n)
+  nodesData.forEach((n) => {
+    const id = graphNodeId(n)
+    if (id) nodeMap[id] = n
+  })
   
-  const nodes = nodesData.map(n => ({
-    id: n.uuid,
+  const nodes = nodesData.map(n => {
+    const id = graphNodeId(n)
+    return {
+    id,
     name: n.name || 'Unnamed',
     type: n.labels?.find(l => l !== 'Entity') || 'Entity',
-    rawData: n
-  }))
+    rawData: { ...n, uuid: n.uuid || id }
+    }
+  })
   
   const nodeIds = new Set(nodes.map(n => n.id))
   
@@ -521,6 +640,7 @@ const renderGraph = () => {
   const link = linkGroup.selectAll('path')
     .data(edges)
     .enter().append('path')
+    .attr('opacity', 0)
     .attr('stroke', 'var(--doc-graph-link-stroke, #b8bcc4)')
     .attr('stroke-width', 1.5)
     .attr('fill', 'none')
@@ -541,6 +661,7 @@ const renderGraph = () => {
   const linkLabelBg = linkGroup.selectAll('rect')
     .data(edges)
     .enter().append('rect')
+    .attr('opacity', 0)
     .attr('fill', 'var(--doc-graph-edge-pill-bg)')
     .attr('rx', 3)
     .attr('ry', 3)
@@ -566,6 +687,7 @@ const renderGraph = () => {
     .data(edges)
     .enter().append('text')
     .text(d => d.name)
+    .attr('opacity', 0)
     .attr('font-size', '9px')
     .attr('fill', 'var(--doc-graph-link-label, var(--doc-muted))')
     .attr('text-anchor', 'middle')
@@ -598,7 +720,8 @@ const renderGraph = () => {
   const node = nodeGroup.selectAll('circle')
     .data(nodes)
     .enter().append('circle')
-    .attr('r', 10)
+    .attr('r', 4)
+    .attr('opacity', 0)
     .attr('fill', d => getColor(d.type))
     .attr('stroke', 'var(--doc-graph-node-stroke, #fff)')
     .attr('stroke-width', 2.5)
@@ -667,6 +790,7 @@ const renderGraph = () => {
     .data(nodes)
     .enter().append('text')
     .text(d => d.name.length > 8 ? d.name.substring(0, 8) + '…' : d.name)
+    .attr('opacity', 0)
     .attr('font-size', '11px')
     .attr('fill', 'var(--doc-graph-node-label, var(--doc-text))')
     .attr('font-weight', '500')
@@ -675,7 +799,10 @@ const renderGraph = () => {
     .style('pointer-events', 'none')
     .style('font-family', 'system-ui, sans-serif')
 
+  let introTick = 0
+  let introScheduled = false
   simulation.on('tick', () => {
+    introTick += 1
     link.attr('d', d => getLinkPath(d))
     
     linkLabels.each(function(d) {
@@ -705,6 +832,19 @@ const renderGraph = () => {
     nodeLabels
       .attr('x', d => d.x)
       .attr('y', d => d.y)
+
+    if (introTick >= 2 && !introScheduled) {
+      introScheduled = true
+      requestAnimationFrame(() => {
+        playGraphIntro({
+          circleNodes: node.nodes(),
+          pathNodes: link.nodes(),
+          textLinkLabels: linkLabels.nodes(),
+          rectLinkBg: linkLabelBg.nodes(),
+          textNodeLabels: nodeLabels.nodes()
+        })
+      })
+    }
   })
   
   svg.on('click', () => {
@@ -716,9 +856,17 @@ const renderGraph = () => {
   })
 }
 
+const scheduleRender = () => {
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      renderGraph()
+    })
+  })
+}
+
 watch(() => props.graphData, () => {
-  nextTick(renderGraph)
-}, { deep: true })
+  scheduleRender()
+}, { deep: true, flush: 'post' })
 
 watch(showEdgeLabels, (newVal) => {
   if (linkLabelsRef) {
@@ -730,21 +878,35 @@ watch(showEdgeLabels, (newVal) => {
 })
 
 watch(themeResolved, () => {
-  nextTick(() => {
-    if (props.graphData?.nodes?.length) renderGraph()
-  })
+  if (props.graphData?.nodes?.length) {
+    scheduleRender()
+  }
 })
 
 const handleResize = () => {
-  nextTick(renderGraph)
+  scheduleRender()
 }
 
 onMounted(() => {
   window.addEventListener('resize', handleResize)
+  if (graphContainer.value && typeof ResizeObserver !== 'undefined') {
+    graphResizeObserver = new ResizeObserver(() => {
+      if (props.graphData?.nodes?.length) {
+        scheduleRender()
+      }
+    })
+    graphResizeObserver.observe(graphContainer.value)
+  }
+  scheduleRender()
 })
 
 onUnmounted(() => {
+  revertGraphIntro()
   window.removeEventListener('resize', handleResize)
+  if (graphResizeObserver) {
+    graphResizeObserver.disconnect()
+    graphResizeObserver = null
+  }
   if (currentSimulation) {
     currentSimulation.stop()
   }
@@ -851,6 +1013,23 @@ onUnmounted(() => {
   font-size: 48px;
   margin-bottom: 16px;
   opacity: 0.2;
+}
+
+.graph-state--error .empty-icon {
+  opacity: 0.35;
+}
+
+.empty-text {
+  max-width: 28rem;
+  margin: 0 auto;
+  line-height: 1.45;
+  font-size: 13px;
+}
+
+.empty-text--error {
+  color: var(--doc-danger, #b91c1c);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* Entity Types Legend - Bottom Left */
