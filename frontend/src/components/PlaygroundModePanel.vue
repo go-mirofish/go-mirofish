@@ -119,7 +119,7 @@
         <div class="console-section">
           <div class="console-header">
             <span class="console-label">Reality seed</span>
-            <span class="console-meta">Formats: PDF, MD, TXT</span>
+            <span class="console-meta">PDF, PPTX, DOCX, MD, TXT</span>
           </div>
           <div
             class="upload-zone"
@@ -133,7 +133,7 @@
               ref="fileInput"
               type="file"
               multiple
-              accept=".pdf,.md,.txt"
+              accept=".pdf,.pptx,.docx,.md,.txt,.markdown"
               @change="handleFileSelect"
               class="file-input-hidden"
               :disabled="loading"
@@ -272,9 +272,10 @@ const triggerFileInput = () => {
 }
 
 const addFiles = (incomingFiles) => {
+  const allowed = new Set(['pdf', 'pptx', 'docx', 'md', 'txt', 'markdown'])
   const validFiles = incomingFiles.filter((file) => {
     const ext = file.name.split('.').pop().toLowerCase()
-    return ['pdf', 'md', 'txt'].includes(ext)
+    return allowed.has(ext)
   })
   files.value.push(...validFiles)
 }
