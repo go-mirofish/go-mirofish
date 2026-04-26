@@ -1,6 +1,6 @@
-# go-mirofish (public preview) — see https://gomirofish.vercel.app
+# go-mirofish (public preview) — see https://go-mirofish.vercel.app
 User-agent: *
 Allow: /
 
 # App routes with :id (process, simulation, report) mark noindex in meta; sitemap lists indexable marketing/docs URLs.
-Sitemap: https://gomirofish.vercel.app/sitemap.xml
+Sitemap: https://go-mirofish.vercel.app/sitemap.xml
