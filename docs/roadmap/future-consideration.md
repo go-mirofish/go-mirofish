@@ -1,6 +1,6 @@
 # Future consideration: simulation depth beyond full Go ownership
 
-`go-mirofish` is already on a **fully Go-owned** public product path (see [`MIGRATION.md`](../../MIGRATION.md) and [`go-migration-plan.md`](go-migration-plan.md) in this folder). This document is **not** a migration plan; it is a **long-horizon R&D and architecture sketch** for making social simulation more realistic, defensible, and deployable from edge (e.g. Raspberry Pi) to workstation.
+`go-mirofish` is built on a **Go-owned** public path: the gateway, native workers, and the Vue app talk to an OpenAI-compatible LLM and Zep-backed graph memory; orchestration and durable rules live in **Go** so behaviour stays testable and deployable. **This page does not describe migration, parity, or how to port from another stack**—it only sketches **long-horizon R&D** to make social simulation more realistic, defensible, and deployable from edge (e.g. Raspberry Pi) to workstation.
 
 **Scope:** research directions, possible algorithms, and system patterns. Nothing here is a committed roadmap item until scoped as an issue or RFC.
 
@@ -162,4 +162,4 @@ Supporting **Raspberry Pi** with a **Go-native** core is a strong fit for **loca
 
 ---
 
-*Last updated to reflect full Go ownership baseline and long-horizon R&D themes.*
+*Last updated: long-horizon R&D themes; migration and stack history are documented elsewhere in the repository.*
