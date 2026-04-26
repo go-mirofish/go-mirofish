@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"strconv"
+
 	intgraph "github.com/go-mirofish/go-mirofish/gateway/internal/graph"
 	apphttp "github.com/go-mirofish/go-mirofish/gateway/internal/http/app"
 	graphhttp "github.com/go-mirofish/go-mirofish/gateway/internal/http/graph"
@@ -80,13 +82,15 @@ func main() {
 		log.Fatalf("validate gateway startup: %v", err)
 	}
 
+	registry := buildProviderRegistry(llmTimeout())
+
 	gw := newGateway(cfg)
 	appHandler := apphttp.New(gw.frontendDevProxy, cfg.frontendDistDir)
 	appHandler.Ready = readinessChecker(cfg)
-	reportHandler := buildReportHandler(cfg)
+	reportHandler := buildReportHandler(cfg, registry)
 	graphHandler := buildGraphHandler(cfg)
-	ontologyHandler := buildOntologyHandler(cfg)
-	prepareHandler := buildPrepareHandler(cfg)
+	ontologyHandler := buildOntologyHandler(cfg, registry)
+	prepareHandler := buildPrepareHandler(cfg, registry)
 	simulationHandler := buildSimulationHandler(cfg)
 	mux := http.NewServeMux()
 	graphBuildLimiter := newRouteLimiter("graph_build", 2, 12, time.Minute)
@@ -96,6 +100,7 @@ func main() {
 	mux.HandleFunc("/health", appHandler.HandleHealth)
 	mux.HandleFunc("/ready", appHandler.HandleReady)
 	mux.HandleFunc("/metrics", appHandler.HandleMetrics)
+	mux.HandleFunc("/api/providers", providerPoolHandler(registry))
 	mux.HandleFunc("/api/graph/data/", graphHandler.HandleGraphData)
 	mux.Handle("/api/graph/build", graphBuildLimiter.wrap(http.HandlerFunc(graphHandler.HandleBuild)))
 	mux.HandleFunc("/api/graph/delete/", graphHandler.HandleDeleteGraph)
@@ -194,20 +199,58 @@ func (g *gateway) graphService() *intgraph.Service {
 	return buildGraphService(g.cfg)
 }
 
-func buildReportHandler(cfg config) *reporthttp.Handler {
-	llmBase := strings.TrimRight(strings.TrimSpace(os.Getenv("LLM_BASE_URL")), "/")
-	llmKey := strings.TrimSpace(os.Getenv("LLM_API_KEY"))
-	llmModel := strings.TrimSpace(os.Getenv("LLM_MODEL_NAME"))
-
-	var providerExec intprovider.Executor
-	if llmBase != "" && llmKey != "" && llmModel != "" {
-		providerExec = intprovider.NewExecutor(intprovider.Config{
-			BaseURL:      llmBase,
-			APIKey:       llmKey,
-			DefaultModel: llmModel,
-			ProviderName: "openai-compatible",
-		}, nil)
+// llmTimeout reads LLM_TIMEOUT_SECONDS from the environment.
+// Default: 300s — generous for local 7B models on consumer hardware.
+// Cloud providers are fast and rarely approach this limit.
+func llmTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("LLM_TIMEOUT_SECONDS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
 	}
+	return 300 * time.Second
+}
+
+// buildProviderRegistry creates the provider pool from env vars + auto-discovery.
+func buildProviderRegistry(timeout time.Duration) *intprovider.Registry {
+	autoDiscover := strings.ToLower(strings.TrimSpace(os.Getenv("LLM_AUTODISCOVER"))) != "false"
+
+	var extraURLs []string
+	if raw := strings.TrimSpace(os.Getenv("LLM_DISCOVER_EXTRA_URLS")); raw != "" {
+		for _, u := range strings.Split(raw, ",") {
+			u = strings.TrimSpace(u)
+			if u != "" {
+				extraURLs = append(extraURLs, u)
+			}
+		}
+	}
+
+	return intprovider.NewRegistry(intprovider.RegistryConfig{
+		PrimaryURL:        strings.TrimRight(strings.TrimSpace(os.Getenv("LLM_BASE_URL")), "/"),
+		PrimaryKey:        strings.TrimSpace(os.Getenv("LLM_API_KEY")),
+		PrimaryModel:      strings.TrimSpace(os.Getenv("LLM_MODEL_NAME")),
+		BoostURL:          strings.TrimRight(strings.TrimSpace(os.Getenv("LLM_BOOST_BASE_URL")), "/"),
+		BoostKey:          strings.TrimSpace(os.Getenv("LLM_BOOST_API_KEY")),
+		BoostModel:        strings.TrimSpace(os.Getenv("LLM_BOOST_MODEL_NAME")),
+		AutoDiscover:      autoDiscover,
+		ExtraDiscoverURLs: extraURLs,
+		Timeout:           timeout,
+	})
+}
+
+// providerPoolHandler serves GET /api/providers — returns the current pool.
+func providerPoolHandler(reg *intprovider.Registry) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		apphttp.WriteJSON(w, http.StatusOK, map[string]any{
+			"providers": reg.PoolInfo(),
+			"success":   true,
+		})
+	}
+}
+
+func buildReportHandler(cfg config, registry *intprovider.Registry) *reporthttp.Handler {
+	llmModel := strings.TrimSpace(os.Getenv("LLM_MODEL_NAME"))
+	providerExec := registry.Executor()
 
 	zepBase := strings.TrimSpace(os.Getenv("ZEP_API_URL"))
 	if zepBase == "" {
@@ -241,8 +284,11 @@ func buildGraphService(cfg config) *intgraph.Service {
 	return intgraph.NewService(store, memoryClient)
 }
 
-func buildOntologyHandler(cfg config) *ontologyhttp.Handler {
+func buildOntologyHandler(cfg config, registry *intprovider.Registry) *ontologyhttp.Handler {
 	store := localfs.New(cfg.projectsDir, cfg.reportsDir, cfg.tasksDir, cfg.simulationsDir, cfg.scriptsDir)
+	if exec := registry.Executor(); exec != nil {
+		return ontologyhttp.NewHandlerWithExecutor(store, nil, apphttp.WriteJSON, exec)
+	}
 	return ontologyhttp.NewHandler(store, nil, apphttp.WriteJSON)
 }
 
@@ -253,8 +299,11 @@ func buildSimulationHandler(cfg config) *simulationhttp.Handler {
 	return simulationhttp.NewHandler(service, store, buildGraphService(cfg))
 }
 
-func buildPrepareHandler(cfg config) *preparehttp.Handler {
+func buildPrepareHandler(cfg config, registry *intprovider.Registry) *preparehttp.Handler {
 	store := localfs.New(cfg.projectsDir, cfg.reportsDir, cfg.tasksDir, cfg.simulationsDir, cfg.scriptsDir)
+	if exec := registry.Executor(); exec != nil {
+		return preparehttp.NewHandlerWithExecutor(store, buildGraphService(cfg), apphttp.WriteJSON, exec)
+	}
 	return preparehttp.NewHandler(store, buildGraphService(cfg), apphttp.WriteJSON)
 }
 
