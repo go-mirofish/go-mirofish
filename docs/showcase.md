@@ -10,4 +10,4 @@ The in-app **Showcase** page ([/docs/showcase](/docs/showcase)) is built from Vu
 
 **Benchmark evidence:** [Bundled JSON](./bundled-benchmarks/README.md) and the generated [benchmark report](./report/benchmark-report.md).
 
-**Screenshot assets** (also in the root [README](../README.md) gallery): [`static/image/Screenshot/Screenshot(1).png`](../static/image/Screenshot/Screenshot(1).png) … `Screenshot(8).png` — the in-app Showcase loads the same files from `frontend/public/static/image/Screenshot/` at build time.
+**Screenshot assets** (also in the root [README](../README.md) gallery): [`static/image/Screenshot/Screenshot(1).png`](../static/image/Screenshot/Screenshot(1).png) through [`Screenshot(9).png`](../static/image/Screenshot/Screenshot(9).png) — the in-app Showcase loads the same files from `frontend/public/static/image/Screenshot/` at build time.
