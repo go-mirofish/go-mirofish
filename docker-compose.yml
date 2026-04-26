@@ -11,6 +11,7 @@ services:
       GATEWAY_PORT: 3000
       # Local Vite dev server (`npm run dev`); gateway proxies non-API HTML to it when you use :3000 in the browser
       FRONTEND_DEV_URL: http://host.docker.internal:5173
+      # LLM on the host (LM Studio, Ollama, …): set LLM_BASE_URL in .env to host.docker.internal:port/v1, not 127.0.0.1
       PROJECTS_DIR: /app/data/projects
       REPORTS_DIR: /app/data/reports
       TASKS_DIR: /app/data/tasks
