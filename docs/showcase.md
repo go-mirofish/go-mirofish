@@ -4,7 +4,7 @@ The in-app **Showcase** page ([/docs/showcase](/docs/showcase)) is built from Vu
 
 **Product flow (five steps):** upload seed material → ontology & graph → environment / personas → multi-agent simulation → report and deep interaction.
 
-**Live static demo:** [gomirofish.vercel.app](https://gomirofish.vercel.app)
+**Live static demo:** [go-mirofish.vercel.app](https://go-mirofish.vercel.app)
 
 **Run locally:** [Installation](./getting-started/installation.md) — `make up` then `npm run dev`, UI at port **5173**.
 
