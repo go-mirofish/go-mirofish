@@ -202,6 +202,13 @@ Run these from the **repository root** (they invoke `go` with `gateway/` on the 
         <sub><b>Graph view &amp; node details</b></sub>
       </td>
     </tr>
+    <tr>
+      <td align="center" colspan="2">
+        <img src="static/image/Screenshot/Screenshot(9).png" width="520" />
+        <br />
+        <sub><b>Step 5 workbench: prediction report &amp; interactive tools</b></sub>
+      </td>
+    </tr>
   </table>
 </div>
 
