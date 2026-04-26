@@ -140,7 +140,7 @@
       "t5Title": "Deeper runtime evolution (later)",
       "t5Body": "After the control plane and proof path are stable: richer simulation behavior, admin/telemetry, and larger orchestration. Hosted static docs + local model-backed runs can keep sharpening in parallel (Vercel preview, playground boundaries).",
       "t6Title": "Future consideration",
-      "t6Body": "Long-horizon, non-binding R&D: diversity of opinion (priors, entropy, dialectic reporting), judgment–action gap (stakes, prospect-style risk), hallucination control (audit layer, memory decay), symbolic math in Go, temporal memory compression, Governor/orchestrator patterns, and edge/Pi—described in detail in the linked doc. Not a commitment until scoped as an RFC or issue.",
+      "t6Body": "Long-horizon, non-binding R&D: diversity of opinion (priors, entropy, dialectic reporting), judgment–action gap (stakes, prospect-style risk), hallucination control (audit layer, memory decay), symbolic math in Go, temporal memory compression, Governor/orchestrator patterns, and edge/Pi—described in full on the Future consideration page (no migration or parity content there). Not a commitment until scoped as an RFC or issue.",
       "t6Cta": "Open the Future consideration document →"
     },
     "navRoadmap": "Roadmap",
