@@ -15,7 +15,7 @@ Upload documents, describe what you want to predict, and get a full simulation r
 
 </div>
 
-**Public preview (Vercel):** [gomirofish.vercel.app](https://gomirofish.vercel.app). Custom domain **go.mirofish.ai** is pending (subdomain access with the domain holder is still in progress).
+**Public preview (Vercel):** [go-mirofish.vercel.app](https://go-mirofish.vercel.app). Custom domain **go.mirofish.ai** is pending (subdomain access with the domain holder is still in progress).
 
 > [!NOTE]
 > **go-mirofish** is a fork of [MiroFish](https://github.com/666ghj/MiroFish) with the **same five-step product workflow** (graph → environment → simulation → report → interaction). This repository replaces the **original Python/Flask control plane and runtime** with a **Go gateway**, optional **OASIS**-style simulation in-process, and a **Vue** UI (Vite in development, static assets in the release image).
@@ -148,7 +148,7 @@ Run these from the **repository root** (they invoke `go` with `gateway/` on the 
 
 ## 🌐 Live Demo
 
-- Static playground (zero-cost replay): [gomirofish.vercel.app](https://gomirofish.vercel.app)
+- Static playground (zero-cost replay): [go-mirofish.vercel.app](https://go-mirofish.vercel.app)
 
 ## 📸 Screenshots
 
