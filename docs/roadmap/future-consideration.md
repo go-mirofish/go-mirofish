@@ -129,7 +129,7 @@ Supporting **Raspberry Pi** with a **Go-native** core is a strong fit for **loca
 - **Thermals and I/O:** Pi-class hardware benefits from **cooling**, **reliable storage** (minimize SD thrash; prefer SSD where possible), and **ZRAM** or conservative swap to reduce wear.
 - **“Remote brain” vs “local brain”:** Pi 4 often acts as **controller only**; Pi 5 may run **tiny** local models; both align with the **resource-aware** scheduling idea below.
 
-**Claim discipline:** See [`docs/report/raspberry-pi-validation.md`](../report/raspberry-pi-validation.md). Do not advertise “Pi verified” without captured on-device runs.
+**Claim discipline (Pi / edge):** Do **not** use wording like *Pi verified*, *Raspberry Pi certified*, or similar unless you can show **evidence from a real on-device run** on the hardware and OS you are talking about—e.g. build logs, command transcripts, or screenshots of the app running the scenario on that device. *Hypothetical* or *laptop-only* performance does not count. If you are describing a target or experiment, say so clearly instead of implying production-grade validation.
 
 ---
 
@@ -146,8 +146,7 @@ Supporting **Raspberry Pi** with a **Go-native** core is a strong fit for **loca
 
 ## 12. How this document relates to the main roadmap
 
-- [`roadmap.md`](roadmap.md) (sibling in this folder) covers **near-term** hardening, proof, and documentation for the **current** stack.
-- **This file** captures **deeper product and research** directions: echo chambers, economic realism, factuality, long-horizon memory, and edge, once the core Go path is even more **operationally** mature.
+The **Roadmap** page in the app (also maintained as a markdown file in the repo) is where we track **near-term, concrete** work: hardening, proof, contracts, and documentation for the **stack as it ships today**, in a rough dependency order. **This page is different:** it is a **long-horizon, non-binding** sketch of research and architecture—echo chambers, economic realism, factuality, long-horizon memory, and edge—ideas we may pursue **after** the current path is more operationally mature. It does not replace the roadmap, and it is not a commitment until something is written up with scope, metrics, and risk as an issue or RFC.
 
 **Next step for any item above:** break out into a dedicated RFC or issue with **scope, metrics, and risk** (especially for any change to the live simulation or report contracts).
 
@@ -162,4 +161,4 @@ Supporting **Raspberry Pi** with a **Go-native** core is a strong fit for **loca
 
 ---
 
-*Last updated: long-horizon R&D themes; migration and stack history are documented elsewhere in the repository.*
+*Last updated: long-horizon R&D themes.*
