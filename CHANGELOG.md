@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.1.5 - 2026-04-26
+
+Changes since `v0.1.0`.
+
+### Added
+
+- add README.md
+- add public
+- add seo
+- add sitemap.xml
+- add robots.txt
+- add og-image.png
+- add .env.example
+- add vercel.json
+- add pnpm-workspace.yaml
+
+### Changed
+
+- adjust CHANGELOG.md
+- adjust skills-lock.json
+- adjust pnpm-lock.yaml
+- adjust main.js
+- adjust App.vue
+- adjust package.json
+- adjust index.html
+- adjust .gitignore
+- adjust README.md
+
+### Chore
+
+- update BenchCharts.vue (select } from 'd3-selection'-] [-import { sca…
+- update pnpm-lock.yaml (which@2.0.2: → vite@7.3.2:)
+
+
 All notable changes to `go-mirofish` will be documented in this file.
 
 ## v0.1.4 - 2026-04-26
