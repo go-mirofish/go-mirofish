@@ -478,7 +478,7 @@ func TestReportStatusAliasUsesProgressForReportID(t *testing.T) {
 		frontendDistDir: "frontend/dist",
 		reportsDir:      t.TempDir(),
 	})
-	reportHandler := buildReportHandler(gw.cfg)
+	reportHandler := buildReportHandler(gw.cfg, buildProviderRegistry(llmTimeout()))
 
 	reportDir := filepath.Join(gw.cfg.reportsDir, "report-42")
 	if err := os.MkdirAll(reportDir, 0o755); err != nil {
@@ -516,7 +516,7 @@ func TestReportStatusAliasBridgesQueryToPOSTBody(t *testing.T) {
 		frontendDistDir: "frontend/dist",
 		reportsDir:      t.TempDir(),
 	})
-	reportHandler := buildReportHandler(gw.cfg)
+	reportHandler := buildReportHandler(gw.cfg, buildProviderRegistry(llmTimeout()))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/report/generate/status?task_id=task-7&simulation_id=sim-7", nil)
 	rec := httptest.NewRecorder()
@@ -969,7 +969,7 @@ func TestReportControlPlaneReadEndpointsAndProxyFallback(t *testing.T) {
 		frontendDistDir: "frontend/dist",
 		reportsDir:      tmpDir,
 	})
-	reportHandler := buildReportHandler(gw.cfg)
+	reportHandler := buildReportHandler(gw.cfg, buildProviderRegistry(llmTimeout()))
 
 	t.Run("get report", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/report/"+reportID, nil)
