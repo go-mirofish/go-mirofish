@@ -1,52 +1,52 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://gomirofish.vercel.app/</loc>
+    <loc>https://go-mirofish.vercel.app/</loc>
     <changefreq>weekly</changefreq>
     <priority>1</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs</loc>
+    <loc>https://go-mirofish.vercel.app/docs</loc>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/installation</loc>
+    <loc>https://go-mirofish.vercel.app/docs/installation</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/ollama</loc>
+    <loc>https://go-mirofish.vercel.app/docs/ollama</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/providers</loc>
+    <loc>https://go-mirofish.vercel.app/docs/providers</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/benchmark</loc>
+    <loc>https://go-mirofish.vercel.app/docs/benchmark</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/showcase</loc>
+    <loc>https://go-mirofish.vercel.app/docs/showcase</loc>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/contributing</loc>
+    <loc>https://go-mirofish.vercel.app/docs/contributing</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/roadmap</loc>
+    <loc>https://go-mirofish.vercel.app/docs/roadmap</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://gomirofish.vercel.app/docs/future-consideration</loc>
+    <loc>https://go-mirofish.vercel.app/docs/future-consideration</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
   </url>
