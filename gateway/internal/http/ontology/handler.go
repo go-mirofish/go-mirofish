@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,14 +25,36 @@ type Handler struct {
 	store     *localfs.Store
 	proxy     ProxyFunc
 	writeJSON JSONFunc
+	// exec is an optional pre-built executor from the registry.
+	// When nil the handler falls back to building one from env vars per request.
+	exec intprovider.Executor
 }
 
 var newExecutor = func(cfg intprovider.Config) intprovider.Executor {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = llmTimeoutOntology()
+	}
 	return intprovider.NewExecutor(cfg, nil)
+}
+
+// llmTimeoutOntology reads LLM_TIMEOUT_SECONDS; defaults to 300s for local model tolerance.
+func llmTimeoutOntology() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("LLM_TIMEOUT_SECONDS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 300 * time.Second
 }
 
 func NewHandler(store *localfs.Store, proxy ProxyFunc, writeJSON JSONFunc) *Handler {
 	return &Handler{store: store, proxy: proxy, writeJSON: writeJSON}
+}
+
+// NewHandlerWithExecutor is like NewHandler but uses exec for all LLM calls
+// instead of building a per-request executor from env vars.
+func NewHandlerWithExecutor(store *localfs.Store, proxy ProxyFunc, writeJSON JSONFunc, exec intprovider.Executor) *Handler {
+	return &Handler{store: store, proxy: proxy, writeJSON: writeJSON, exec: exec}
 }
 
 type uploadFile struct {
@@ -241,18 +264,28 @@ func (h *Handler) saveProjectText(projectID, text string) error {
 }
 
 func (h *Handler) generateOntology(ctx context.Context, simulationRequirement, sourceText, additionalContext string) (map[string]any, error) {
-	baseURL := strings.TrimRight(os.Getenv("LLM_BASE_URL"), "/")
-	apiKey := strings.TrimSpace(os.Getenv("LLM_API_KEY"))
-	model := strings.TrimSpace(os.Getenv("LLM_MODEL_NAME"))
-	if baseURL == "" || apiKey == "" || model == "" {
-		return nil, fmt.Errorf("LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL_NAME are required for Go ontology generation")
+	var exec intprovider.Executor
+	var model string
+
+	if h.exec != nil {
+		// Use the registry-provided executor (auto-discovered / pre-configured).
+		exec = h.exec
+		model = strings.TrimSpace(os.Getenv("LLM_MODEL_NAME"))
+	} else {
+		// Legacy path: build executor from env vars per request.
+		baseURL := strings.TrimRight(os.Getenv("LLM_BASE_URL"), "/")
+		apiKey := strings.TrimSpace(os.Getenv("LLM_API_KEY"))
+		model = strings.TrimSpace(os.Getenv("LLM_MODEL_NAME"))
+		if baseURL == "" || apiKey == "" || model == "" {
+			return nil, fmt.Errorf("LLM_BASE_URL, LLM_API_KEY, and LLM_MODEL_NAME are required for Go ontology generation")
+		}
+		exec = newExecutor(intprovider.Config{
+			BaseURL:      baseURL,
+			APIKey:       apiKey,
+			DefaultModel: model,
+			ProviderName: "openai-compatible",
+		})
 	}
-	exec := newExecutor(intprovider.Config{
-		BaseURL:      baseURL,
-		APIKey:       apiKey,
-		DefaultModel: model,
-		ProviderName: "openai-compatible",
-	})
 	builder := intontology.NewBuilder(providerAdapter{exec: exec, model: model})
 	ontology, err := builder.Build(ctx, intontology.BuildInput{
 		SimulationRequirement: simulationRequirement,
@@ -309,6 +342,7 @@ func (p providerAdapter) Execute(ctx context.Context, systemPrompt string, userP
 		Temperature:    0,
 		MaxTokens:      16384,
 		ResponseFormat: &intprovider.ResponseFormat{Type: intprovider.ResponseFormatJSONObject},
+		TaskHint:       intprovider.TaskOntology,
 	})
 	if err != nil {
 		return "", err
