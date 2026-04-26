@@ -4,7 +4,7 @@
  */
 export const SITE_BASE =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SITE_BASE_URL) ||
-  'https://gomirofish.vercel.app'
+  'https://go-mirofish.vercel.app'
 
 export const SITE_NAME = 'go-mirofish'
 
