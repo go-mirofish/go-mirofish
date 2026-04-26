@@ -7,7 +7,7 @@
         <div class="sub">{{ $t('docs.showcase.subtitle') }}</div>
         <div class="cta">
           <router-link class="btn primary" to="/docs/installation">{{ $t('docs.showcase.ctaRunLocal') }}</router-link>
-          <a class="btn" href="https://gomirofish.vercel.app" target="_blank" rel="noopener noreferrer">{{ $t('docs.showcase.ctaViewDemo') }} ↗</a>
+          <a class="btn" href="https://go-mirofish.vercel.app" target="_blank" rel="noopener noreferrer">{{ $t('docs.showcase.ctaViewDemo') }} ↗</a>
         </div>
       </div>
       <div class="hero-card">
