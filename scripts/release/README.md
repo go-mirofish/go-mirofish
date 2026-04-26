@@ -1,5 +1,16 @@
 # Release scripts
 
+## Step-by-step flow (repeat each time you ship doc + code)
+
+Run in this order:
+
+1. **`npm run release`** — release gate (gateway `go test ./...`). **Fix failures before step 2.**
+2. **Changelog** — add a new top section (pick the next version and today’s date):
+   - `node scripts/release/update-changelog.cjs --version vX.Y.Z --date YYYY-MM-DD`
+   - or: `npm run changelog:release -- --version vX.Y.Z --date YYYY-MM-DD`  
+   **Do not** invent a version higher than the git tag you will tag on GitHub unless you intend to catch up tags later.
+3. **`npm run commit`** — commits **each changed file** as its own commit (parallel commit script). For one combined commit instead: `git add -A` then `git commit -m "type(scope): message"`.
+
 | Command | What it does |
 |--------|---------------|
 | `npm run release` | Run gateway tests (`go test ./...` in `gateway/`; uses Python script if `python3` is available). |
