@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,14 +28,34 @@ type Handler struct {
 	store     *localfs.Store
 	graph     GraphService
 	writeJSON JSONFunc
+	// exec is an optional pre-built executor from the registry.
+	exec intprovider.Executor
+}
+
+// llmTimeoutPrepare reads LLM_TIMEOUT_SECONDS; defaults to 300s for local model tolerance.
+func llmTimeoutPrepare() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("LLM_TIMEOUT_SECONDS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 300 * time.Second
 }
 
 var newProviderExecutor = func(cfg intprovider.Config) intprovider.Executor {
+	if cfg.Timeout == 0 {
+		cfg.Timeout = llmTimeoutPrepare()
+	}
 	return intprovider.NewExecutor(cfg, nil)
 }
 
 func NewHandler(store *localfs.Store, graph GraphService, writeJSON JSONFunc) *Handler {
 	return &Handler{store: store, graph: graph, writeJSON: writeJSON}
+}
+
+// NewHandlerWithExecutor is like NewHandler but uses exec for all LLM calls.
+func NewHandlerWithExecutor(store *localfs.Store, graph GraphService, writeJSON JSONFunc, exec intprovider.Executor) *Handler {
+	return &Handler{store: store, graph: graph, writeJSON: writeJSON, exec: exec}
 }
 
 func (h *Handler) HandleGenerateProfiles(w http.ResponseWriter, r *http.Request) {
@@ -465,6 +486,7 @@ func (p providerContentGenerator) Execute(ctx context.Context, systemPrompt stri
 		Temperature:    0,
 		MaxTokens:      4096,
 		ResponseFormat: &intprovider.ResponseFormat{Type: intprovider.ResponseFormatJSONObject},
+		TaskHint:       intprovider.TaskProfiles,
 	})
 	if err != nil {
 		return "", err
@@ -473,6 +495,9 @@ func (p providerContentGenerator) Execute(ctx context.Context, systemPrompt stri
 }
 
 func (h *Handler) providerExecutor() intprovider.Executor {
+	if h.exec != nil {
+		return h.exec
+	}
 	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("LLM_BASE_URL")), "/")
 	apiKey := strings.TrimSpace(os.Getenv("LLM_API_KEY"))
 	model := strings.TrimSpace(os.Getenv("LLM_MODEL_NAME"))
