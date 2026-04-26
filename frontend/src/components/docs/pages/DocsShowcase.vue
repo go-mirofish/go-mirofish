@@ -104,6 +104,7 @@ const shotMeta = [
   { n: 6, step: '05' },
   { n: 7, step: '02' },
   { n: 8, step: '01' },
+  { n: 9, step: '05' },
 ]
 
 const screenshots = computed(() =>
