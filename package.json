@@ -2,7 +2,7 @@
   "name": "go-mirofish",
   "version": "0.1.0",
   "description": "go-mirofish - lightweight and local-first swarm intelligence engine",
-  "homepage": "https://gomirofish.vercel.app",
+  "homepage": "https://go-mirofish.vercel.app",
   "scripts": {
     "prepare": "husky",
     "setup": "bash scripts/dev/bootstrap.sh --js-only",
