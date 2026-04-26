@@ -29,12 +29,12 @@
   --doc-cta-primary-bg: #111827;
   --doc-cta-primary-fg: #ffffff;
   --doc-workbench-mid: #f5f5f5;
-  /* Workbench system console + Step panels (theme with data-theme) */
-  --doc-console-bg: #0a0a0c;
-  --doc-console-fg: #d4d4d8;
-  --doc-console-muted: #9ca3af;
-  --doc-console-border: #27272a;
-  --doc-console-scroll: #3f3f46;
+  /* Workbench system console + Step panels (SystemTerminalSplit, step logs) — light theme */
+  --doc-console-bg: #f1f5f9;
+  --doc-console-fg: #0f172a;
+  --doc-console-muted: #64748b;
+  --doc-console-border: #e2e8f0;
+  --doc-console-scroll: #94a3b8;
   --doc-badge-ok-bg: #e8f5e9;
   --doc-badge-ok-fg: #2e7d32;
   --doc-badge-pending-bg: #f3f4f6;
