@@ -130,10 +130,43 @@ func (e *OpenAIExecutor) Execute(ctx context.Context, req ProviderRequest) (Prov
 		}
 	}
 
+	// Some local servers (LM Studio, older Ollama) reject response_format=json_object.
+	// If that is the only reason for failure, transparently retry without it.
+	// The system prompt already instructs the model to emit raw JSON, and the caller's
+	// sanitizeJSON / JSON-extraction logic handles any extra wrapping.
+	if payload.ResponseFormat != nil {
+		var provErr *Error
+		if errors.As(lastErr, &provErr) && provErr.Kind == ErrClient && isResponseFormatError(provErr.Message) {
+			payload.ResponseFormat = nil
+			started := time.Now()
+			resp, err := e.doCompletion(ctx, payload)
+			if err == nil {
+				e.recordSuccess()
+				return ProviderResponse{
+					Content:      resp.Content,
+					FinishReason: resp.FinishReason,
+					Provider:     e.cfg.ProviderName,
+					Model:        payload.Model,
+					StatusCode:   resp.StatusCode,
+					Duration:     time.Since(started),
+				}, nil
+			}
+			e.recordFailure()
+			lastErr = err
+		}
+	}
+
 	if lastErr == nil {
 		lastErr = &Error{Op: "Execute", Kind: ErrUnavailable, Provider: e.cfg.ProviderName, Message: "provider execution failed"}
 	}
 	return ProviderResponse{}, lastErr
+}
+
+// isResponseFormatError returns true when the provider rejected the response_format field.
+// Matches LM Studio's "must be 'json_schema' or 'text'" and similar messages from Ollama.
+func isResponseFormatError(msg string) bool {
+	lower := strings.ToLower(msg)
+	return strings.Contains(lower, "response_format")
 }
 
 func (e *OpenAIExecutor) beforeRequest() error {
