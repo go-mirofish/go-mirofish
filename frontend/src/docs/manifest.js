@@ -49,6 +49,13 @@ export const DOCS_GROUPS = [
         type: 'markdown',
         sourcePath: 'docs/configuration/providers.md',
       },
+      {
+        key: 'headless-sdk',
+        titleKey: 'docs.navHeadlessSdk',
+        path: '/docs/headless-sdk',
+        type: 'markdown',
+        sourcePath: 'docs/configuration/headless-sdk.md',
+      },
     ],
   },
   {

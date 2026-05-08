@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.1.6 - 2026-05-09
+
+### Added
+
+- add Headless SDK v0.1.0 at `github.com/go-mirofish/go-mirofish/gateway/sdk/headless`
+- add npm package `go-mirofish-sdk`
+
+### Documentation
+
+- add Headless SDK README with import-and-run and embedded usage examples
+- add Headless SDK release note, checklist, release-candidate staging guide, and main docs page
+
+### Notes
+
+- Headless SDK v0.1.0 is introduced as part of go-mirofish `v0.1.6`
+- the SDK version label does not imply the repository tag was reset to `v0.1.0`
+
 ## v0.1.5 - 2026-04-26
 
 Changes since `v0.1.0`.
