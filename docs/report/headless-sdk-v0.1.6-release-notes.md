@@ -16,11 +16,18 @@ Integrators can now import:
 github.com/go-mirofish/go-mirofish/gateway/sdk/headless
 ```
 
+and install:
+
+```bash
+npm install go-mirofish-sdk
+```
+
 and run or mount the current Go-native gateway stack directly from their own Go applications without forking the gateway binary.
 
 ### What is included
 
 - an embeddable Go package for the current gateway HTTP stack
+- a dedicated npm package: `go-mirofish-sdk`
 - `Run(context.Context)` for direct startup
 - `LoadConfigFromEnv()` and `New(Config)` for explicit construction
 - `Handler()` for mounting under an existing `net/http` mux
@@ -31,6 +38,7 @@ and run or mount the current Go-native gateway stack directly from their own Go 
 - no custom process wrapper is required
 - no internal code changes are required by the integrator
 - the same route wiring used by the gateway binary is now available as an importable Go package
+- JavaScript consumers now have a standalone package name instead of publishing the root app tarball
 
 ### Repository versioning note
 
@@ -48,6 +56,7 @@ This is intentional: the SDK is a new public package surface introduced inside t
 ### Added
 
 - add Headless SDK v0.1.0 at `github.com/go-mirofish/go-mirofish/gateway/sdk/headless`
+- add npm package `go-mirofish-sdk`
 
 ### Documentation
 

@@ -4,10 +4,14 @@ This document is the release-note draft for the first public headless SDK surfac
 
 ## Summary
 
-The repository now exposes an embeddable Go package for mounting or serving the `go-mirofish` gateway stack directly from another Go application:
+The repository now exposes two SDK surfaces for mounting or serving the `go-mirofish` gateway stack:
 
 ```go
 github.com/go-mirofish/go-mirofish/gateway/sdk/headless
+```
+
+```text
+go-mirofish-sdk
 ```
 
 The SDK is intended for:

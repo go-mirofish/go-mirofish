@@ -8,6 +8,7 @@ It is intentionally isolated from the repo-wide dirty worktree so you can stage 
 
 - SDK surface name: `Headless SDK v0.1.0`
 - Go import path: `github.com/go-mirofish/go-mirofish/gateway/sdk/headless`
+- npm package name: `go-mirofish-sdk`
 - Repo/module tag: use the **next valid repository release version**, not `v0.1.0` again
 
 Recommended public wording:
@@ -21,14 +22,20 @@ Stage only these files for the SDK release candidate:
 ```bash
 git -C go-mirofish add -- \
   README.md \
+  package.json \
+  pnpm-workspace.yaml \
   gateway/sdk/headless/doc.go \
   gateway/sdk/headless/headless.go \
   gateway/sdk/headless/headless_test.go \
   gateway/sdk/headless/example_test.go \
   gateway/sdk/headless/README.md \
+  packages/headless-sdk/package.json \
+  packages/headless-sdk/index.js \
+  packages/headless-sdk/README.md \
   docs/report/headless-sdk-v0.1.0.md \
   docs/report/headless-sdk-release-checklist.md \
   docs/report/headless-sdk-release-candidate.md \
+  docs/report/headless-sdk-v0.1.6-release-notes.md \
   scripts/release/README.md
 ```
 
@@ -39,6 +46,11 @@ Minimum SDK verification:
 ```bash
 cd go-mirofish/gateway
 GOCACHE=/tmp/go-build-cache GOMODCACHE=/tmp/go-mod-cache go test ./sdk/headless
+```
+
+```bash
+cd go-mirofish/packages/headless-sdk
+npm pack --dry-run
 ```
 
 Recommended supporting verification:
@@ -56,6 +68,7 @@ Use this inside the next repo release section in `CHANGELOG.md`:
 ### Added
 
 - add Headless SDK v0.1.0 at `github.com/go-mirofish/go-mirofish/gateway/sdk/headless`
+- add npm package `go-mirofish-sdk`
 
 ### Documentation
 
@@ -92,3 +105,8 @@ The repository already has existing tags:
 - `v0.1.2`
 
 So the SDK should be announced as a feature introduced in the **next repo release**, not as a repo-wide version reset.
+
+Also:
+
+- do not publish the root `go-mirofish` package again
+- publish only `go-mirofish-sdk`

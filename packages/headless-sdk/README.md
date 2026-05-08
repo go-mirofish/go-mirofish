@@ -1,17 +1,17 @@
-# @justinedevs/go-mirofish-headless-sdk
+# go-mirofish-sdk
 
 Headless JavaScript SDK for the `go-mirofish` gateway APIs.
 
 ## Install
 
 ```bash
-npm install @justinedevs/go-mirofish-headless-sdk
+npm install go-mirofish-sdk
 ```
 
 ## Quick start
 
 ```js
-import createHeadlessSDK from '@justinedevs/go-mirofish-headless-sdk'
+import createHeadlessSDK from 'go-mirofish-sdk'
 
 const sdk = createHeadlessSDK({
   baseURL: 'http://127.0.0.1:3000',

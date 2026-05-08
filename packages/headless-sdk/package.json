@@ -1,5 +1,5 @@
 {
-  "name": "@justinedevs/go-mirofish-headless-sdk",
+  "name": "go-mirofish-sdk",
   "version": "0.1.0",
   "description": "Headless SDK for integrating with the go-mirofish gateway APIs",
   "type": "module",

@@ -1,5 +1,6 @@
 {
   "name": "go-mirofish",
+  "private": true,
   "version": "0.1.0",
   "description": "go-mirofish - lightweight and local-first swarm intelligence engine",
   "homepage": "https://go-mirofish.vercel.app",
