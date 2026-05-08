@@ -90,6 +90,14 @@ func TestNativeBridgeLifecycleAndInterview(t *testing.T) {
 		t.Fatalf("expected successful batch interview")
 	}
 
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(simDir, "twitter", "actions.jsonl")); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
 	stopResp, err := bridge.StopSimulation(context.Background(), StopRequest{SimulationID: "sim-1"})
 	if err != nil {
 		t.Fatalf("StopSimulation: %v", err)
