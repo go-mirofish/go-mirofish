@@ -1,0 +1,13 @@
+{
+  "name": "starlark-greeter",
+  "version": "0.1.0",
+  "runtime": "starlark",
+  "api_version": 1,
+  "module": "plugin.star",
+  "entry": "run",
+  "capabilities": [
+    "log",
+    "emit_event",
+    "time_now"
+  ]
+}

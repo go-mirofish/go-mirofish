@@ -2,6 +2,7 @@ package headless
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -33,6 +34,9 @@ import (
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
 	"github.com/go-mirofish/go-mirofish/gateway/internal/telemetry"
 	intworker "github.com/go-mirofish/go-mirofish/gateway/internal/worker"
+	"github.com/go-mirofish/go-mirofish/gateway/sdk/plugins"
+	plugintrust "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/trust"
+	pluginwasm "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/wasm"
 )
 
 // Config controls the embedded headless gateway wiring.
@@ -53,6 +57,21 @@ type App struct {
 	Config   Config
 	handler  http.Handler
 	registry *intprovider.Registry
+}
+
+// WasmPlugin wraps a compiled Wasm plugin and its manifest.
+type WasmPlugin struct {
+	Manifest plugins.Manifest
+	compiled *pluginwasm.Compiled
+	runtime  *pluginwasm.Runtime
+}
+
+// WasmManager coordinates Wasm plugin discovery, loading, and invocation.
+type WasmManager struct {
+	runtime  *pluginwasm.Runtime
+	registry *plugins.Registry
+	loaded   map[string]*WasmPlugin
+	trust    *plugintrust.Policy
 }
 
 type reportLookup struct {
@@ -176,6 +195,223 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	return app.ListenAndServe(ctx)
+}
+
+// NewWasmRuntime creates a plugin runtime using the same Go-native process.
+func NewWasmRuntime(ctx context.Context, cfg pluginwasm.Config) (*pluginwasm.Runtime, error) {
+	return pluginwasm.NewRuntime(ctx, cfg)
+}
+
+// LoadWasmPluginFromBytes parses a manifest, compiles guest Wasm, and validates the ABI.
+func LoadWasmPluginFromBytes(ctx context.Context, runtime *pluginwasm.Runtime, manifestRaw []byte, wasmBytes []byte) (*WasmPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("wasm runtime is required")
+	}
+	manifest, err := plugins.ParseManifest(manifestRaw)
+	if err != nil {
+		return nil, err
+	}
+	if manifest.Runtime != "wasm" {
+		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
+	}
+	compiled, err := runtime.Compile(ctx, wasmBytes)
+	if err != nil {
+		return nil, err
+	}
+	contract := pluginwasm.ContractFromManifest(manifest)
+	if err := compiled.Validate(ctx, contract); err != nil {
+		return nil, err
+	}
+	return &WasmPlugin{
+		Manifest: manifest,
+		compiled: compiled,
+		runtime:  runtime,
+	}, nil
+}
+
+// LoadWasmPluginFromFiles loads a plugin manifest and Wasm guest from disk.
+func LoadWasmPluginFromFiles(ctx context.Context, runtime *pluginwasm.Runtime, manifestPath, wasmPath string) (*WasmPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("wasm runtime is required")
+	}
+	manifest, err := plugins.LoadManifestFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	if manifest.Runtime != "wasm" {
+		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
+	}
+	wasmRaw, err := os.ReadFile(wasmPath)
+	if err != nil {
+		return nil, err
+	}
+	compiled, err := runtime.Compile(ctx, wasmRaw)
+	if err != nil {
+		return nil, err
+	}
+	contract := pluginwasm.ContractFromManifest(manifest)
+	if err := compiled.Validate(ctx, contract); err != nil {
+		return nil, err
+	}
+	return &WasmPlugin{
+		Manifest: manifest,
+		compiled: compiled,
+		runtime:  runtime,
+	}, nil
+}
+
+// LoadWasmPluginFromFilesTrusted verifies a plugin against a trust policy before loading it.
+func LoadWasmPluginFromFilesTrusted(ctx context.Context, runtime *pluginwasm.Runtime, manifestPath, wasmPath string, policy plugintrust.Policy) (*WasmPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("wasm runtime is required")
+	}
+	manifest, err := plugins.LoadManifestFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	wasmRaw, err := os.ReadFile(wasmPath)
+	if err != nil {
+		return nil, err
+	}
+	if err := plugintrust.VerifyManifestAndModule(policy, manifest, wasmRaw); err != nil {
+		return nil, err
+	}
+	return LoadWasmPluginFromBytes(ctx, runtime, mustMarshalManifest(manifest), wasmRaw)
+}
+
+// LoadWasmPluginFromDir loads a plugin from a directory containing manifest.json and the guest module.
+func LoadWasmPluginFromDir(ctx context.Context, runtime *pluginwasm.Runtime, dir string) (*WasmPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("wasm runtime is required")
+	}
+	compiled, manifest, err := runtime.LoadFromDir(ctx, dir)
+	if err != nil {
+		return nil, err
+	}
+	return &WasmPlugin{
+		Manifest: manifest,
+		compiled: compiled,
+		runtime:  runtime,
+	}, nil
+}
+
+// LoadWasmPluginFromDirTrusted discovers, verifies, and loads a plugin directory.
+func LoadWasmPluginFromDirTrusted(ctx context.Context, runtime *pluginwasm.Runtime, dir string, policy plugintrust.Policy) (*WasmPlugin, error) {
+	reg, err := plugins.DiscoverDirectory(dir)
+	if err != nil {
+		return nil, err
+	}
+	return LoadWasmPluginFromFilesTrusted(ctx, runtime, reg.ManifestPath, reg.ModulePath, policy)
+}
+
+// NewWasmManager creates a Wasm plugin manager over a shared runtime.
+func NewWasmManager(runtime *pluginwasm.Runtime) (*WasmManager, error) {
+	if runtime == nil {
+		return nil, errors.New("wasm runtime is required")
+	}
+	return &WasmManager{
+		runtime:  runtime,
+		registry: plugins.NewRegistry(),
+		loaded:   map[string]*WasmPlugin{},
+	}, nil
+}
+
+// NewTrustedWasmManager creates a Wasm manager with a trust policy.
+func NewTrustedWasmManager(runtime *pluginwasm.Runtime, policy plugintrust.Policy) (*WasmManager, error) {
+	manager, err := NewWasmManager(runtime)
+	if err != nil {
+		return nil, err
+	}
+	manager.trust = &policy
+	return manager, nil
+}
+
+// RegisterDir discovers and registers a plugin directory.
+func (m *WasmManager) RegisterDir(dir string) (plugins.Registration, error) {
+	if m == nil || m.registry == nil {
+		return plugins.Registration{}, errors.New("wasm manager is not initialized")
+	}
+	return m.registry.RegisterDirectory(dir)
+}
+
+// RegisterDirs registers multiple plugin directories.
+func (m *WasmManager) RegisterDirs(dirs ...string) error {
+	for _, dir := range dirs {
+		if _, err := m.RegisterDir(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// List returns registered plugin metadata.
+func (m *WasmManager) List() []plugins.Registration {
+	if m == nil || m.registry == nil {
+		return nil
+	}
+	return m.registry.List()
+}
+
+// LoadByName compiles and validates a registered plugin by name.
+func (m *WasmManager) LoadByName(ctx context.Context, name string) (*WasmPlugin, error) {
+	if m == nil || m.registry == nil {
+		return nil, errors.New("wasm manager is not initialized")
+	}
+	if loaded := m.loaded[name]; loaded != nil {
+		return loaded, nil
+	}
+	reg, ok := m.registry.Get(name)
+	if !ok {
+		return nil, fmt.Errorf("plugin %q is not registered", name)
+	}
+	var (
+		plugin *WasmPlugin
+		err    error
+	)
+	if m.trust != nil {
+		plugin, err = LoadWasmPluginFromFilesTrusted(ctx, m.runtime, reg.ManifestPath, reg.ModulePath, *m.trust)
+	} else {
+		plugin, err = LoadWasmPluginFromFiles(ctx, m.runtime, reg.ManifestPath, reg.ModulePath)
+	}
+	if err != nil {
+		return nil, err
+	}
+	m.loaded[name] = plugin
+	return plugin, nil
+}
+
+// InvokeByName loads a registered plugin by name and invokes it.
+func (m *WasmManager) InvokeByName(ctx context.Context, name string, input []byte) (plugins.Result, error) {
+	plugin, err := m.LoadByName(ctx, name)
+	if err != nil {
+		return plugins.Result{}, err
+	}
+	return plugin.Invoke(ctx, input)
+}
+
+// PluginManifestJSON returns the normalized manifest as JSON.
+func (p *WasmPlugin) PluginManifestJSON() ([]byte, error) {
+	if p == nil {
+		return nil, errors.New("plugin is not loaded")
+	}
+	return json.MarshalIndent(p.Manifest, "", "  ")
+}
+
+// Invoke runs a loaded Wasm plugin with the manifest-declared contract and capabilities.
+func (p *WasmPlugin) Invoke(ctx context.Context, input []byte) (plugins.Result, error) {
+	if p == nil || p.compiled == nil {
+		return plugins.Result{}, errors.New("plugin is not loaded")
+	}
+	contract := pluginwasm.ContractFromManifest(p.Manifest)
+	return p.compiled.InvokeWithCapabilities(ctx, input, contract, p.Manifest.Capabilities)
+}
+
+func mustMarshalManifest(manifest plugins.Manifest) []byte {
+	raw, err := json.Marshal(manifest)
+	if err != nil {
+		panic(err)
+	}
+	return raw
 }
 
 func (r reportLookup) ReadSimulation(simulationID string) (map[string]any, error) {

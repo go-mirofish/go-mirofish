@@ -91,6 +91,85 @@ func main() {
 }
 ```
 
+### Wasm plugin loading
+
+The Go SDK now includes a first Wasm-plugin loading path:
+
+```go
+ctx := context.Background()
+rt, err := headless.NewWasmRuntime(ctx, pluginwasm.DefaultConfig())
+if err != nil {
+	log.Fatal(err)
+}
+
+plugin, err := headless.LoadWasmPluginFromDir(
+	ctx,
+	rt,
+	"examples/wasm-greeter",
+)
+if err != nil {
+	log.Fatal(err)
+}
+
+result, err := plugin.Invoke(ctx, []byte("SDK"))
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(string(result.Output))
+```
+
+Repo-owned example assets:
+
+- `examples/wasm-greeter/manifest.json`
+- `examples/wasm-greeter/greet-rust.wasm`
+- `examples/wasm-greeter/rust/greet.rs`
+- `examples/wasm-event-greeter/manifest.json`
+- `examples/wasm-event-greeter/event-greeter.wasm`
+- `examples/wasm-event-greeter/src/lib.rs`
+
+### Multi-plugin registry
+
+The Go SDK now also exposes a small Wasm plugin manager:
+
+```go
+manager, err := headless.NewWasmManager(rt)
+if err != nil {
+	log.Fatal(err)
+}
+
+if err := manager.RegisterDirs("examples/wasm-greeter"); err != nil {
+	log.Fatal(err)
+}
+
+plugins := manager.List()
+result, err := manager.InvokeByName(ctx, "example-greeter", []byte("SDK"))
+if err != nil {
+	log.Fatal(err)
+}
+
+fmt.Println(len(plugins), string(result.Output))
+```
+
+## Starlark runtime scaffold
+
+The second plugin path is now scaffolded under:
+
+```go
+github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/starlark
+```
+
+Repo-owned example assets:
+
+- `examples/starlark-greeter/manifest.json`
+- `examples/starlark-greeter/plugin.star`
+
+Use this runtime when you want:
+
+- Python-like syntax
+- deterministic rules
+- lower complexity than Wasm
+- pure Go embedding
+
 ## Integration promise
 
 The SDK goal is:

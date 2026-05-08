@@ -1,0 +1,16 @@
+{
+  "name": "example-event-greeter",
+  "version": "0.1.0",
+  "runtime": "wasm",
+  "api_version": 1,
+  "module": "event-greeter.wasm",
+  "entry": "run",
+  "allocate": "allocate",
+  "deallocate": "deallocate",
+  "abi_function": "mirofish_abi_version",
+  "capabilities": [
+    "log",
+    "emit_event",
+    "time_now"
+  ]
+}

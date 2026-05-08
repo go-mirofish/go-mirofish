@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -276,7 +277,7 @@ func (z *ZepClient) do(ctx context.Context, method, relPath string, body any, ou
 		return &Error{Op: method + " " + relPath, Kind: ErrMemoryUnavailable, StatusCode: resp.StatusCode, RetryAfter: retryAfter(resp.Header.Get("Retry-After"))}
 	}
 	if resp.StatusCode >= 400 {
-		return &Error{Op: method + " " + relPath, Kind: ErrMemoryInvalid, StatusCode: resp.StatusCode, Err: fmt.Errorf(strings.TrimSpace(string(raw)))}
+		return &Error{Op: method + " " + relPath, Kind: ErrMemoryInvalid, StatusCode: resp.StatusCode, Err: errors.New(strings.TrimSpace(string(raw)))}
 	}
 	if out != nil {
 		if err := json.Unmarshal(raw, out); err != nil {
