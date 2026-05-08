@@ -1,0 +1,38 @@
+{
+  "name": "@justinedevs/go-mirofish-headless-sdk",
+  "version": "0.1.0",
+  "description": "Headless SDK for integrating with the go-mirofish gateway APIs",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "files": [
+    "index.js",
+    "README.md"
+  ],
+  "keywords": [
+    "go-mirofish",
+    "headless",
+    "sdk",
+    "simulation",
+    "gateway"
+  ],
+  "homepage": "https://go-mirofish.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/go-mirofish/go-mirofish.git",
+    "directory": "packages/headless-sdk"
+  },
+  "license": "AGPL-3.0",
+  "author": "JustineDevs",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.14.0"
+  }
+}
