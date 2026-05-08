@@ -146,6 +146,34 @@ Run these from the **repository root** (they invoke `go` with `gateway/` on the 
 
 **npm helper:** `bash scripts/dev/benchmark.sh live|merge-bundled|smoke|examples|benchmark` forwards to the same tools.
 
+## Headless SDK
+
+The repository now exposes an embeddable Go package for “import and run” integrations:
+
+- import path: `github.com/go-mirofish/go-mirofish/gateway/sdk/headless`
+- package docs: [gateway/sdk/headless/README.md](./gateway/sdk/headless/README.md)
+
+Minimal usage:
+
+```go
+package main
+
+import (
+  "context"
+  "log"
+
+  "github.com/go-mirofish/go-mirofish/gateway/sdk/headless"
+)
+
+func main() {
+  if err := headless.Run(context.Background()); err != nil {
+    log.Fatal(err)
+  }
+}
+```
+
+For existing Go services that want to mount go-mirofish under their own mux, use `headless.New(...)` and reuse `app.Handler()`.
+
 ## 🌐 Live Demo
 
 - Static playground (zero-cost replay): [go-mirofish.vercel.app](https://go-mirofish.vercel.app)

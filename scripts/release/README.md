@@ -11,6 +11,27 @@ Run in this order:
    **Do not** invent a version higher than the git tag you will tag on GitHub unless you intend to catch up tags later.
 3. **`npm run commit`** — commits **each changed file** as its own commit (parallel commit script). For one combined commit instead: `git add -A` then `git commit -m "type(scope): message"`.
 
+## Headless SDK note
+
+The repository now exposes an embeddable Go package at:
+
+```go
+github.com/go-mirofish/go-mirofish/gateway/sdk/headless
+```
+
+If you are preparing the first Headless SDK announcement, keep the versioning distinction explicit:
+
+- the **SDK surface** may be described as `Headless SDK v0.1.0`
+- the **repo / module tag** must still follow the actual repository release line
+
+Do not create a lower Git tag than the highest existing repository tag just to match SDK marketing language. If the SDK is introduced after earlier repo tags already exist, publish it as:
+
+- “Headless SDK v0.1.0 introduced in repo release `vX.Y.Z`”
+
+Use the SDK release-note draft when preparing that announcement:
+
+- `docs/report/headless-sdk-v0.1.0.md`
+
 | Command | What it does |
 |--------|---------------|
 | `npm run release` | Run gateway tests (`go test ./...` in `gateway/`; uses Python script if `python3` is available). |
