@@ -9,6 +9,12 @@ import (
 )
 
 const (
+	RuntimeWasm     = "wasm"
+	RuntimeStarlark = "starlark"
+
+	DefaultWasmModuleFilename     = "plugin.wasm"
+	DefaultStarlarkModuleFilename = "plugin.star"
+
 	CapabilityLog       = "log"
 	CapabilityEmitEvent = "emit_event"
 	CapabilityTimeNow   = "time_now"
@@ -76,4 +82,21 @@ func ValidateManifest(m Manifest) error {
 		}
 	}
 	return nil
+}
+
+// NormalizeRuntime trims and lowercases a runtime name for comparison.
+func NormalizeRuntime(runtime string) string {
+	return strings.ToLower(strings.TrimSpace(runtime))
+}
+
+// DefaultModuleForRuntime returns the conventional module filename for a runtime.
+func DefaultModuleForRuntime(runtime string) (string, error) {
+	switch NormalizeRuntime(runtime) {
+	case RuntimeWasm:
+		return DefaultWasmModuleFilename, nil
+	case RuntimeStarlark:
+		return DefaultStarlarkModuleFilename, nil
+	default:
+		return "", fmt.Errorf("plugin manifest: runtime %q requires an explicit module", runtime)
+	}
 }

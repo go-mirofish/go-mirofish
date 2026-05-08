@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.1.7 - 2026-05-09
+
+### Added
+
+- add runtime-neutral plugin manager support across Wasm and Starlark in the Go Headless SDK
+- add file-backed trust policy loading for trusted plugin bootstrapping
+- add first-party manifest signing helpers for trusted plugin release workflows
+
+### Changed
+
+- normalize plugin module defaults by runtime instead of assuming Wasm everywhere
+- harden plugin registry and manager state with concurrency-safe access
+- align direct loaders with directory discovery so default module behavior stays consistent
+
+### Documentation
+
+- document trusted plugin policy files, generic plugin manager usage, and signing helpers
+
+### Notes
+
+- this release extends the Go-native plugin SDK surface introduced in `v0.1.6`
+- the npm package `go-mirofish-sdk` is unchanged in this release; the shipped changes are in the Go/module SDK surface
+
 ## v0.1.6 - 2026-05-09
 
 ### Added

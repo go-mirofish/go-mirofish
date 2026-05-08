@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const DefaultManifestFilename = "manifest.json"
@@ -20,6 +21,7 @@ type Registration struct {
 
 // Registry tracks discovered plugins by name.
 type Registry struct {
+	mu            sync.RWMutex
 	registrations map[string]Registration
 }
 
@@ -37,6 +39,8 @@ func (r *Registry) RegisterDirectory(dir string) (Registration, error) {
 	if err != nil {
 		return Registration{}, err
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.registrations[reg.Manifest.Name] = reg
 	return reg, nil
 }
@@ -46,6 +50,8 @@ func (r *Registry) Get(name string) (Registration, bool) {
 	if r == nil {
 		return Registration{}, false
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	reg, ok := r.registrations[name]
 	return reg, ok
 }
@@ -55,6 +61,8 @@ func (r *Registry) List() []Registration {
 	if r == nil {
 		return nil
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	out := make([]Registration, 0, len(r.registrations))
 	for _, reg := range r.registrations {
 		out = append(out, reg)
@@ -75,7 +83,10 @@ func DiscoverDirectory(dir string) (Registration, error) {
 	}
 	moduleName := strings.TrimSpace(manifest.Module)
 	if moduleName == "" {
-		moduleName = "plugin.wasm"
+		moduleName, err = DefaultModuleForRuntime(manifest.Runtime)
+		if err != nil {
+			return Registration{}, err
+		}
 	}
 	modulePath := filepath.Clean(filepath.Join(dir, moduleName))
 	rel, err := filepath.Rel(dir, modulePath)
@@ -92,6 +103,21 @@ func DiscoverDirectory(dir string) (Registration, error) {
 		Directory:    dir,
 		ManifestPath: manifestPath,
 		ModulePath:   modulePath,
-		Manifest:     manifest,
+		Manifest: Manifest{
+			Name:         manifest.Name,
+			Version:      manifest.Version,
+			Runtime:      manifest.Runtime,
+			APIVersion:   manifest.APIVersion,
+			Module:       moduleName,
+			Entry:        manifest.Entry,
+			Allocate:     manifest.Allocate,
+			Deallocate:   manifest.Deallocate,
+			ABIFunction:  manifest.ABIFunction,
+			DigestSHA256: manifest.DigestSHA256,
+			SignerID:     manifest.SignerID,
+			Signature:    manifest.Signature,
+			Capabilities: append([]string(nil), manifest.Capabilities...),
+			Start:        append([]string(nil), manifest.Start...),
+		},
 	}, nil
 }

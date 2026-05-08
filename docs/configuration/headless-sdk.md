@@ -150,6 +150,41 @@ if err != nil {
 fmt.Println(len(plugins), string(result.Output))
 ```
 
+### File-backed trust policy
+
+Trusted plugin loading no longer requires building signer state only in Go code. You can keep it in a JSON file and load it through the headless SDK:
+
+```go
+policy, err := headless.LoadTrustPolicyFile("plugins/trust.json")
+if err != nil {
+	log.Fatal(err)
+}
+
+manager, err := headless.NewTrustedWasmManager(rt, policy)
+if err != nil {
+	log.Fatal(err)
+}
+```
+
+Policy shape:
+
+```json
+{
+  "require_digest": true,
+  "require_signed": true,
+  "allow_unsigned": false,
+  "trusted_signers": {
+    "core": "BASE64_ED25519_PUBLIC_KEY"
+  }
+}
+```
+
+Runtime-aware directory discovery now defaults module filenames by runtime:
+
+- `wasm` plugins default to `plugin.wasm`
+- `starlark` plugins default to `plugin.star`
+- unknown runtimes must declare `module` explicitly
+
 ## Starlark runtime scaffold
 
 The second plugin path is now scaffolded under:
@@ -169,6 +204,46 @@ Use this runtime when you want:
 - deterministic rules
 - lower complexity than Wasm
 - pure Go embedding
+
+### Runtime-neutral plugin manager
+
+If you want one registry across Wasm and Starlark plugins, use the headless-level `PluginManager`:
+
+```go
+wasmRuntime, err := headless.NewWasmRuntime(ctx, pluginwasm.DefaultConfig())
+if err != nil {
+	log.Fatal(err)
+}
+
+starlarkRuntime := pluginstarlark.NewRuntime()
+
+manager, err := headless.NewPluginManager(wasmRuntime, starlarkRuntime)
+if err != nil {
+	log.Fatal(err)
+}
+
+if err := manager.RegisterDirs(
+	"examples/wasm-greeter",
+	"examples/starlark-greeter",
+); err != nil {
+	log.Fatal(err)
+}
+
+result, err := manager.InvokeByName(ctx, "starlark-greeter", []byte("SDK"))
+if err != nil {
+	log.Fatal(err)
+}
+```
+
+### Signing helpers
+
+The trust package now supports signing as well as verification:
+
+- `LoadPrivateKeyFile(path)`
+- `ParsePrivateKey(raw)`
+- `SignManifestAndModule(manifest, module, signerID, privateKey)`
+
+This removes the need for each embedding application to hand-roll digest and signature generation.
 
 ## Integration promise
 

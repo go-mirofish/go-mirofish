@@ -6,6 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-mirofish/go-mirofish/gateway/sdk/plugins"
@@ -56,5 +59,74 @@ func TestVerifyManifestAndModuleRejectsBadDigest(t *testing.T) {
 	err := VerifyManifestAndModule(Policy{RequireDigest: true}, manifest, []byte("plugin-module"))
 	if err == nil {
 		t.Fatal("expected digest error")
+	}
+}
+
+func TestParsePolicy(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	raw, err := json.Marshal(Config{
+		RequireDigest: true,
+		RequireSigned: true,
+		TrustedSigners: map[string]string{
+			"core": base64.StdEncoding.EncodeToString(pub),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	policy, err := ParsePolicy(raw)
+	if err != nil {
+		t.Fatalf("ParsePolicy: %v", err)
+	}
+	if !policy.RequireDigest || !policy.RequireSigned {
+		t.Fatalf("expected strict policy, got %#v", policy)
+	}
+	if len(policy.TrustedSigners["core"]) != ed25519.PublicKeySize {
+		t.Fatalf("unexpected signer key length: %d", len(policy.TrustedSigners["core"]))
+	}
+}
+
+func TestLoadPolicyFile(t *testing.T) {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "trust.json")
+	raw, err := json.Marshal(Config{
+		RequireDigest: true,
+		TrustedSigners: map[string]string{
+			"core": hex.EncodeToString(pub),
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	policy, err := LoadPolicyFile(path)
+	if err != nil {
+		t.Fatalf("LoadPolicyFile: %v", err)
+	}
+	if !policy.RequireDigest {
+		t.Fatal("expected require_digest=true")
+	}
+	if len(policy.TrustedSigners["core"]) != ed25519.PublicKeySize {
+		t.Fatalf("unexpected signer key length: %d", len(policy.TrustedSigners["core"]))
+	}
+}
+
+func TestParsePolicyRejectsBadSignerKey(t *testing.T) {
+	raw := []byte(`{
+		"trusted_signers": {
+			"core": "not-a-valid-key"
+		}
+	}`)
+	if _, err := ParsePolicy(raw); err == nil {
+		t.Fatal("expected signer decode error")
 	}
 }

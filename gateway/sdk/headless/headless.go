@@ -35,6 +35,7 @@ import (
 	"github.com/go-mirofish/go-mirofish/gateway/internal/telemetry"
 	intworker "github.com/go-mirofish/go-mirofish/gateway/internal/worker"
 	"github.com/go-mirofish/go-mirofish/gateway/sdk/plugins"
+	pluginstarlark "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/starlark"
 	plugintrust "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/trust"
 	pluginwasm "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/wasm"
 )
@@ -66,12 +67,36 @@ type WasmPlugin struct {
 	runtime  *pluginwasm.Runtime
 }
 
+// StarlarkPlugin wraps a loaded Starlark plugin and its manifest.
+type StarlarkPlugin struct {
+	Manifest plugins.Manifest
+	program  *pluginstarlark.Program
+	runtime  *pluginstarlark.Runtime
+}
+
+// Plugin is the runtime-neutral loaded plugin surface exposed by the headless SDK.
+type Plugin interface {
+	PluginManifest() plugins.Manifest
+	Invoke(context.Context, []byte) (plugins.Result, error)
+}
+
 // WasmManager coordinates Wasm plugin discovery, loading, and invocation.
 type WasmManager struct {
+	mu       sync.RWMutex
 	runtime  *pluginwasm.Runtime
 	registry *plugins.Registry
 	loaded   map[string]*WasmPlugin
 	trust    *plugintrust.Policy
+}
+
+// PluginManager coordinates runtime-neutral plugin discovery, loading, and invocation.
+type PluginManager struct {
+	mu              sync.RWMutex
+	registry        *plugins.Registry
+	wasmRuntime     *pluginwasm.Runtime
+	starlarkRuntime *pluginstarlark.Runtime
+	loaded          map[string]Plugin
+	trust           *plugintrust.Policy
 }
 
 type reportLookup struct {
@@ -202,6 +227,11 @@ func NewWasmRuntime(ctx context.Context, cfg pluginwasm.Config) (*pluginwasm.Run
 	return pluginwasm.NewRuntime(ctx, cfg)
 }
 
+// LoadTrustPolicyFile reads a JSON trust policy used by trusted plugin loaders.
+func LoadTrustPolicyFile(path string) (plugintrust.Policy, error) {
+	return plugintrust.LoadPolicyFile(path)
+}
+
 // LoadWasmPluginFromBytes parses a manifest, compiles guest Wasm, and validates the ABI.
 func LoadWasmPluginFromBytes(ctx context.Context, runtime *pluginwasm.Runtime, manifestRaw []byte, wasmBytes []byte) (*WasmPlugin, error) {
 	if runtime == nil {
@@ -211,9 +241,10 @@ func LoadWasmPluginFromBytes(ctx context.Context, runtime *pluginwasm.Runtime, m
 	if err != nil {
 		return nil, err
 	}
-	if manifest.Runtime != "wasm" {
+	if plugins.NormalizeRuntime(manifest.Runtime) != plugins.RuntimeWasm {
 		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
 	}
+	manifest = normalizePluginManifest(manifest)
 	compiled, err := runtime.Compile(ctx, wasmBytes)
 	if err != nil {
 		return nil, err
@@ -238,9 +269,10 @@ func LoadWasmPluginFromFiles(ctx context.Context, runtime *pluginwasm.Runtime, m
 	if err != nil {
 		return nil, err
 	}
-	if manifest.Runtime != "wasm" {
+	if plugins.NormalizeRuntime(manifest.Runtime) != plugins.RuntimeWasm {
 		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
 	}
+	manifest = normalizePluginManifest(manifest)
 	wasmRaw, err := os.ReadFile(wasmPath)
 	if err != nil {
 		return nil, err
@@ -304,6 +336,102 @@ func LoadWasmPluginFromDirTrusted(ctx context.Context, runtime *pluginwasm.Runti
 	return LoadWasmPluginFromFilesTrusted(ctx, runtime, reg.ManifestPath, reg.ModulePath, policy)
 }
 
+// LoadStarlarkPluginFromBytes parses a manifest and loads Starlark guest source.
+func LoadStarlarkPluginFromBytes(runtime *pluginstarlark.Runtime, manifestRaw []byte, source []byte) (*StarlarkPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("starlark runtime is required")
+	}
+	manifest, err := plugins.ParseManifest(manifestRaw)
+	if err != nil {
+		return nil, err
+	}
+	if plugins.NormalizeRuntime(manifest.Runtime) != plugins.RuntimeStarlark {
+		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
+	}
+	manifest = normalizePluginManifest(manifest)
+	program, err := runtime.LoadFromBytes(manifest, source)
+	if err != nil {
+		return nil, err
+	}
+	return &StarlarkPlugin{
+		Manifest: manifest,
+		program:  program,
+		runtime:  runtime,
+	}, nil
+}
+
+// LoadStarlarkPluginFromFiles loads a plugin manifest and Starlark source from disk.
+func LoadStarlarkPluginFromFiles(runtime *pluginstarlark.Runtime, manifestPath, sourcePath string) (*StarlarkPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("starlark runtime is required")
+	}
+	manifest, err := plugins.LoadManifestFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	if plugins.NormalizeRuntime(manifest.Runtime) != plugins.RuntimeStarlark {
+		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
+	}
+	manifest = normalizePluginManifest(manifest)
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return nil, err
+	}
+	program, err := runtime.LoadFromBytes(manifest, source)
+	if err != nil {
+		return nil, err
+	}
+	return &StarlarkPlugin{
+		Manifest: manifest,
+		program:  program,
+		runtime:  runtime,
+	}, nil
+}
+
+// LoadStarlarkPluginFromFilesTrusted verifies a plugin against a trust policy before loading it.
+func LoadStarlarkPluginFromFilesTrusted(runtime *pluginstarlark.Runtime, manifestPath, sourcePath string, policy plugintrust.Policy) (*StarlarkPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("starlark runtime is required")
+	}
+	manifest, err := plugins.LoadManifestFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	source, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return nil, err
+	}
+	if err := plugintrust.VerifyManifestAndModule(policy, manifest, source); err != nil {
+		return nil, err
+	}
+	return LoadStarlarkPluginFromBytes(runtime, mustMarshalManifest(manifest), source)
+}
+
+// LoadStarlarkPluginFromDir loads a plugin from a directory containing manifest.json and Starlark source.
+func LoadStarlarkPluginFromDir(runtime *pluginstarlark.Runtime, dir string) (*StarlarkPlugin, error) {
+	if runtime == nil {
+		return nil, errors.New("starlark runtime is required")
+	}
+	program, err := runtime.LoadFromDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	return &StarlarkPlugin{
+		Manifest: program.Manifest,
+		program:  program,
+		runtime:  runtime,
+	}, nil
+}
+
+// LoadStarlarkPluginFromDirTrusted discovers, verifies, and loads a plugin directory.
+func LoadStarlarkPluginFromDirTrusted(runtime *pluginstarlark.Runtime, dir string, policy plugintrust.Policy) (*StarlarkPlugin, error) {
+	reg, err := plugins.DiscoverDirectory(dir)
+	if err != nil {
+		return nil, err
+	}
+	return LoadStarlarkPluginFromFilesTrusted(runtime, reg.ManifestPath, reg.ModulePath, policy)
+}
+
 // NewWasmManager creates a Wasm plugin manager over a shared runtime.
 func NewWasmManager(runtime *pluginwasm.Runtime) (*WasmManager, error) {
 	if runtime == nil {
@@ -324,6 +452,47 @@ func NewTrustedWasmManager(runtime *pluginwasm.Runtime, policy plugintrust.Polic
 	}
 	manager.trust = &policy
 	return manager, nil
+}
+
+// NewTrustedWasmManagerFromFile loads a trust policy from disk before creating a manager.
+func NewTrustedWasmManagerFromFile(runtime *pluginwasm.Runtime, policyPath string) (*WasmManager, error) {
+	policy, err := LoadTrustPolicyFile(policyPath)
+	if err != nil {
+		return nil, err
+	}
+	return NewTrustedWasmManager(runtime, policy)
+}
+
+// NewPluginManager creates a runtime-neutral plugin manager over shared runtimes.
+func NewPluginManager(wasmRuntime *pluginwasm.Runtime, starlarkRuntime *pluginstarlark.Runtime) (*PluginManager, error) {
+	if wasmRuntime == nil && starlarkRuntime == nil {
+		return nil, errors.New("at least one plugin runtime is required")
+	}
+	return &PluginManager{
+		registry:        plugins.NewRegistry(),
+		wasmRuntime:     wasmRuntime,
+		starlarkRuntime: starlarkRuntime,
+		loaded:          map[string]Plugin{},
+	}, nil
+}
+
+// NewTrustedPluginManager creates a runtime-neutral plugin manager with a trust policy.
+func NewTrustedPluginManager(wasmRuntime *pluginwasm.Runtime, starlarkRuntime *pluginstarlark.Runtime, policy plugintrust.Policy) (*PluginManager, error) {
+	manager, err := NewPluginManager(wasmRuntime, starlarkRuntime)
+	if err != nil {
+		return nil, err
+	}
+	manager.trust = &policy
+	return manager, nil
+}
+
+// NewTrustedPluginManagerFromFile loads a trust policy from disk before creating a manager.
+func NewTrustedPluginManagerFromFile(wasmRuntime *pluginwasm.Runtime, starlarkRuntime *pluginstarlark.Runtime, policyPath string) (*PluginManager, error) {
+	policy, err := LoadTrustPolicyFile(policyPath)
+	if err != nil {
+		return nil, err
+	}
+	return NewTrustedPluginManager(wasmRuntime, starlarkRuntime, policy)
 }
 
 // RegisterDir discovers and registers a plugin directory.
@@ -357,7 +526,10 @@ func (m *WasmManager) LoadByName(ctx context.Context, name string) (*WasmPlugin,
 	if m == nil || m.registry == nil {
 		return nil, errors.New("wasm manager is not initialized")
 	}
-	if loaded := m.loaded[name]; loaded != nil {
+	m.mu.RLock()
+	loaded := m.loaded[name]
+	m.mu.RUnlock()
+	if loaded != nil {
 		return loaded, nil
 	}
 	reg, ok := m.registry.Get(name)
@@ -376,12 +548,74 @@ func (m *WasmManager) LoadByName(ctx context.Context, name string) (*WasmPlugin,
 	if err != nil {
 		return nil, err
 	}
+	m.mu.Lock()
 	m.loaded[name] = plugin
+	m.mu.Unlock()
 	return plugin, nil
 }
 
 // InvokeByName loads a registered plugin by name and invokes it.
 func (m *WasmManager) InvokeByName(ctx context.Context, name string, input []byte) (plugins.Result, error) {
+	plugin, err := m.LoadByName(ctx, name)
+	if err != nil {
+		return plugins.Result{}, err
+	}
+	return plugin.Invoke(ctx, input)
+}
+
+// RegisterDir discovers and registers a plugin directory.
+func (m *PluginManager) RegisterDir(dir string) (plugins.Registration, error) {
+	if m == nil || m.registry == nil {
+		return plugins.Registration{}, errors.New("plugin manager is not initialized")
+	}
+	return m.registry.RegisterDirectory(dir)
+}
+
+// RegisterDirs registers multiple plugin directories.
+func (m *PluginManager) RegisterDirs(dirs ...string) error {
+	for _, dir := range dirs {
+		if _, err := m.RegisterDir(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// List returns registered plugin metadata.
+func (m *PluginManager) List() []plugins.Registration {
+	if m == nil || m.registry == nil {
+		return nil
+	}
+	return m.registry.List()
+}
+
+// LoadByName loads a registered plugin by name using the runtime declared in its manifest.
+func (m *PluginManager) LoadByName(ctx context.Context, name string) (Plugin, error) {
+	if m == nil || m.registry == nil {
+		return nil, errors.New("plugin manager is not initialized")
+	}
+	m.mu.RLock()
+	loaded := m.loaded[name]
+	m.mu.RUnlock()
+	if loaded != nil {
+		return loaded, nil
+	}
+	reg, ok := m.registry.Get(name)
+	if !ok {
+		return nil, fmt.Errorf("plugin %q is not registered", name)
+	}
+	plugin, err := m.loadRegistration(ctx, reg)
+	if err != nil {
+		return nil, err
+	}
+	m.mu.Lock()
+	m.loaded[name] = plugin
+	m.mu.Unlock()
+	return plugin, nil
+}
+
+// InvokeByName loads a registered plugin by name and invokes it.
+func (m *PluginManager) InvokeByName(ctx context.Context, name string, input []byte) (plugins.Result, error) {
 	plugin, err := m.LoadByName(ctx, name)
 	if err != nil {
 		return plugins.Result{}, err
@@ -397,6 +631,14 @@ func (p *WasmPlugin) PluginManifestJSON() ([]byte, error) {
 	return json.MarshalIndent(p.Manifest, "", "  ")
 }
 
+// PluginManifest returns the normalized manifest for the loaded plugin.
+func (p *WasmPlugin) PluginManifest() plugins.Manifest {
+	if p == nil {
+		return plugins.Manifest{}
+	}
+	return p.Manifest
+}
+
 // Invoke runs a loaded Wasm plugin with the manifest-declared contract and capabilities.
 func (p *WasmPlugin) Invoke(ctx context.Context, input []byte) (plugins.Result, error) {
 	if p == nil || p.compiled == nil {
@@ -404,6 +646,63 @@ func (p *WasmPlugin) Invoke(ctx context.Context, input []byte) (plugins.Result, 
 	}
 	contract := pluginwasm.ContractFromManifest(p.Manifest)
 	return p.compiled.InvokeWithCapabilities(ctx, input, contract, p.Manifest.Capabilities)
+}
+
+// PluginManifestJSON returns the normalized manifest as JSON.
+func (p *StarlarkPlugin) PluginManifestJSON() ([]byte, error) {
+	if p == nil {
+		return nil, errors.New("plugin is not loaded")
+	}
+	return json.MarshalIndent(p.Manifest, "", "  ")
+}
+
+// PluginManifest returns the normalized manifest for the loaded plugin.
+func (p *StarlarkPlugin) PluginManifest() plugins.Manifest {
+	if p == nil {
+		return plugins.Manifest{}
+	}
+	return p.Manifest
+}
+
+// Invoke runs a loaded Starlark plugin with the manifest-declared capabilities.
+func (p *StarlarkPlugin) Invoke(ctx context.Context, input []byte) (plugins.Result, error) {
+	if p == nil || p.program == nil {
+		return plugins.Result{}, errors.New("plugin is not loaded")
+	}
+	return p.program.InvokeWithCapabilities(ctx, input, p.Manifest.Capabilities)
+}
+
+func (m *PluginManager) loadRegistration(ctx context.Context, reg plugins.Registration) (Plugin, error) {
+	switch plugins.NormalizeRuntime(reg.Manifest.Runtime) {
+	case plugins.RuntimeWasm:
+		if m.wasmRuntime == nil {
+			return nil, errors.New("wasm runtime is not configured")
+		}
+		if m.trust != nil {
+			return LoadWasmPluginFromFilesTrusted(ctx, m.wasmRuntime, reg.ManifestPath, reg.ModulePath, *m.trust)
+		}
+		return LoadWasmPluginFromFiles(ctx, m.wasmRuntime, reg.ManifestPath, reg.ModulePath)
+	case plugins.RuntimeStarlark:
+		if m.starlarkRuntime == nil {
+			return nil, errors.New("starlark runtime is not configured")
+		}
+		if m.trust != nil {
+			return LoadStarlarkPluginFromFilesTrusted(m.starlarkRuntime, reg.ManifestPath, reg.ModulePath, *m.trust)
+		}
+		return LoadStarlarkPluginFromFiles(m.starlarkRuntime, reg.ManifestPath, reg.ModulePath)
+	default:
+		return nil, fmt.Errorf("unsupported plugin runtime %q", reg.Manifest.Runtime)
+	}
+}
+
+func normalizePluginManifest(manifest plugins.Manifest) plugins.Manifest {
+	manifest.Runtime = plugins.NormalizeRuntime(manifest.Runtime)
+	if strings.TrimSpace(manifest.Module) == "" {
+		if module, err := plugins.DefaultModuleForRuntime(manifest.Runtime); err == nil {
+			manifest.Module = module
+		}
+	}
+	return manifest
 }
 
 func mustMarshalManifest(manifest plugins.Manifest) []byte {

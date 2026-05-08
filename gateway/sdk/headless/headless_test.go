@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/go-mirofish/go-mirofish/gateway/sdk/plugins"
+	pluginstarlark "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/starlark"
 	plugintrust "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/trust"
 	pluginwasm "github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/wasm"
 )
@@ -188,6 +189,25 @@ func TestLoadWasmPluginFromDir(t *testing.T) {
 	}
 }
 
+func TestLoadStarlarkPluginFromDir(t *testing.T) {
+	rt := pluginstarlark.NewRuntime()
+	root := repoExampleDir(t, "starlark-greeter")
+	plugin, err := LoadStarlarkPluginFromDir(rt, root)
+	if err != nil {
+		t.Fatalf("LoadStarlarkPluginFromDir: %v", err)
+	}
+	if plugin.Manifest.Name != "starlark-greeter" {
+		t.Fatalf("unexpected plugin name: %q", plugin.Manifest.Name)
+	}
+	result, err := plugin.Invoke(context.Background(), []byte("SDK"))
+	if err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if got, want := string(result.Output), "Hello, SDK"; got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestLoadWasmPluginFromFilesTrusted(t *testing.T) {
 	ctx := context.Background()
 	rt, err := NewWasmRuntime(ctx, pluginwasm.Config{
@@ -343,6 +363,101 @@ func TestNewTrustedWasmManager(t *testing.T) {
 	}
 }
 
+func TestLoadTrustPolicyFileAndNewTrustedWasmManagerFromFile(t *testing.T) {
+	ctx := context.Background()
+	rt, err := NewWasmRuntime(ctx, pluginwasm.Config{
+		HostModuleName: pluginwasm.DefaultHostModuleName,
+		LogImportName:  pluginwasm.DefaultLogImportName,
+	})
+	if err != nil {
+		t.Fatalf("NewWasmRuntime: %v", err)
+	}
+	defer rt.Close(ctx)
+
+	root := repoExamplesRoot(t)
+	workdir := copyExampleDir(t, root)
+	manifestPath := filepath.Join(workdir, "manifest.json")
+	wasmPath := filepath.Join(workdir, "greet-rust.wasm")
+	manifestRaw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	wasmRaw, err := os.ReadFile(wasmPath)
+	if err != nil {
+		t.Fatalf("read wasm: %v", err)
+	}
+	manifest := map[string]any{}
+	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	digest := sha256.Sum256(wasmRaw)
+	manifest["digest_sha256"] = hex.EncodeToString(digest[:])
+	manifest["signer_id"] = "core"
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	unsignedRaw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	unsignedManifest, err := plugins.ParseManifest(unsignedRaw)
+	if err != nil {
+		t.Fatalf("ParseManifest: %v", err)
+	}
+	payload, err := plugintrust.SigningPayload(unsignedManifest)
+	if err != nil {
+		t.Fatalf("SigningPayload: %v", err)
+	}
+	manifest["signature_ed25519"] = base64.StdEncoding.EncodeToString(ed25519.Sign(priv, payload))
+	finalRaw, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatalf("marshal signed manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, finalRaw, 0o644); err != nil {
+		t.Fatalf("write signed manifest: %v", err)
+	}
+
+	policyPath := filepath.Join(t.TempDir(), "trust.json")
+	policyRaw, err := json.Marshal(plugintrust.Config{
+		RequireDigest: true,
+		RequireSigned: true,
+		TrustedSigners: map[string]string{
+			"core": base64.StdEncoding.EncodeToString(pub),
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal policy: %v", err)
+	}
+	if err := os.WriteFile(policyPath, policyRaw, 0o644); err != nil {
+		t.Fatalf("write trust policy: %v", err)
+	}
+
+	policy, err := LoadTrustPolicyFile(policyPath)
+	if err != nil {
+		t.Fatalf("LoadTrustPolicyFile: %v", err)
+	}
+	if !policy.RequireSigned {
+		t.Fatal("expected require_signed=true")
+	}
+
+	manager, err := NewTrustedWasmManagerFromFile(rt, policyPath)
+	if err != nil {
+		t.Fatalf("NewTrustedWasmManagerFromFile: %v", err)
+	}
+	if err := manager.RegisterDirs(workdir); err != nil {
+		t.Fatalf("RegisterDirs: %v", err)
+	}
+	result, err := manager.InvokeByName(ctx, "example-greeter", []byte("SDK"))
+	if err != nil {
+		t.Fatalf("InvokeByName: %v", err)
+	}
+	if got, want := string(result.Output), "Hello, SDK!"; got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func TestWasmManagerRegisterListAndInvoke(t *testing.T) {
 	ctx := context.Background()
 	rt, err := NewWasmRuntime(ctx, pluginwasm.Config{
@@ -378,6 +493,48 @@ func TestWasmManagerRegisterListAndInvoke(t *testing.T) {
 	}
 }
 
+func TestPluginManagerRegisterListAndInvokeMixedRuntimes(t *testing.T) {
+	ctx := context.Background()
+	wasmRT, err := NewWasmRuntime(ctx, pluginwasm.Config{
+		HostModuleName: pluginwasm.DefaultHostModuleName,
+		LogImportName:  pluginwasm.DefaultLogImportName,
+	})
+	if err != nil {
+		t.Fatalf("NewWasmRuntime: %v", err)
+	}
+	defer wasmRT.Close(ctx)
+	starlarkRT := pluginstarlark.NewRuntime()
+
+	manager, err := NewPluginManager(wasmRT, starlarkRT)
+	if err != nil {
+		t.Fatalf("NewPluginManager: %v", err)
+	}
+	if err := manager.RegisterDirs(
+		repoExampleDir(t, "wasm-greeter"),
+		repoExampleDir(t, "starlark-greeter"),
+	); err != nil {
+		t.Fatalf("RegisterDirs: %v", err)
+	}
+	items := manager.List()
+	if len(items) != 2 {
+		t.Fatalf("expected 2 plugins, got %d", len(items))
+	}
+	wasmResult, err := manager.InvokeByName(ctx, "example-greeter", []byte("SDK"))
+	if err != nil {
+		t.Fatalf("InvokeByName(wasm): %v", err)
+	}
+	if got, want := string(wasmResult.Output), "Hello, SDK!"; got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+	starlarkResult, err := manager.InvokeByName(ctx, "starlark-greeter", []byte("SDK"))
+	if err != nil {
+		t.Fatalf("InvokeByName(starlark): %v", err)
+	}
+	if got, want := string(starlarkResult.Output), "Hello, SDK"; got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
+
 func tSetFile(dir, name, content string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -387,7 +544,7 @@ func tSetFile(dir, name, content string) error {
 
 func mustReadRustGreetFixture(t *testing.T) []byte {
 	t.Helper()
-	path := filepath.Join(repoExamplesRoot(t), "greet-rust.wasm")
+	path := filepath.Join(repoExampleDir(t, "wasm-greeter"), "greet-rust.wasm")
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read rust greet fixture: %v", err)
@@ -396,6 +553,10 @@ func mustReadRustGreetFixture(t *testing.T) []byte {
 }
 
 func repoExamplesRoot(t *testing.T) string {
+	return repoExampleDir(t, "wasm-greeter")
+}
+
+func repoExampleDir(t *testing.T, name string) string {
 	t.Helper()
 	wd, err := os.Getwd()
 	if err != nil {
@@ -403,7 +564,7 @@ func repoExamplesRoot(t *testing.T) string {
 	}
 	dir := wd
 	for i := 0; i < 10; i++ {
-		candidate := filepath.Join(dir, "examples", "wasm-greeter")
+		candidate := filepath.Join(dir, "examples", name)
 		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
 			return candidate
 		}
@@ -413,7 +574,7 @@ func repoExamplesRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
-	t.Fatalf("could not locate examples/wasm-greeter from %s", wd)
+	t.Fatalf("could not locate examples/%s from %s", name, wd)
 	return ""
 }
 

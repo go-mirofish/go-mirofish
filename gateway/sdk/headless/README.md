@@ -70,20 +70,37 @@ func main() {
 - `(*App).ListenAndServe(ctx context.Context) error`
 - `Run(ctx context.Context) error`
 - `NewWasmRuntime(ctx, cfg)`
+- `LoadTrustPolicyFile(path)`
 - `LoadWasmPluginFromBytes(ctx, runtime, manifestRaw, wasmBytes)`
 - `LoadWasmPluginFromFiles(ctx, runtime, manifestPath, wasmPath)`
 - `LoadWasmPluginFromDir(ctx, runtime, dir)`
 - `LoadWasmPluginFromFilesTrusted(ctx, runtime, manifestPath, wasmPath, policy)`
 - `LoadWasmPluginFromDirTrusted(ctx, runtime, dir, policy)`
+- `LoadStarlarkPluginFromBytes(runtime, manifestRaw, source)`
+- `LoadStarlarkPluginFromFiles(runtime, manifestPath, sourcePath)`
+- `LoadStarlarkPluginFromDir(runtime, dir)`
+- `LoadStarlarkPluginFromFilesTrusted(runtime, manifestPath, sourcePath, policy)`
+- `LoadStarlarkPluginFromDirTrusted(runtime, dir, policy)`
 - `(*WasmPlugin).Invoke(ctx, input)`
 - `(*WasmPlugin).PluginManifestJSON()`
+- `(*StarlarkPlugin).Invoke(ctx, input)`
+- `(*StarlarkPlugin).PluginManifestJSON()`
 - `NewWasmManager(runtime)`
 - `NewTrustedWasmManager(runtime, policy)`
+- `NewTrustedWasmManagerFromFile(runtime, policyPath)`
+- `NewPluginManager(wasmRuntime, starlarkRuntime)`
+- `NewTrustedPluginManager(wasmRuntime, starlarkRuntime, policy)`
+- `NewTrustedPluginManagerFromFile(wasmRuntime, starlarkRuntime, policyPath)`
 - `(*WasmManager).RegisterDir(dir)`
 - `(*WasmManager).RegisterDirs(dirs...)`
 - `(*WasmManager).List()`
 - `(*WasmManager).LoadByName(ctx, name)`
 - `(*WasmManager).InvokeByName(ctx, name, input)`
+- `(*PluginManager).RegisterDir(dir)`
+- `(*PluginManager).RegisterDirs(dirs...)`
+- `(*PluginManager).List()`
+- `(*PluginManager).LoadByName(ctx, name)`
+- `(*PluginManager).InvokeByName(ctx, name, input)`
 
 ## Wasm plugins
 
@@ -151,6 +168,27 @@ if err != nil {
 fmt.Println(len(items), string(result.Output))
 ```
 
+### File-backed trust policy
+
+```go
+policy, err := headless.LoadTrustPolicyFile("plugins/trust.json")
+if err != nil {
+  return err
+}
+
+manager, err := headless.NewTrustedWasmManager(runtime, policy)
+if err != nil {
+  return err
+}
+```
+
+The first-party JSON trust policy format accepts:
+
+- `require_digest`
+- `require_signed`
+- `allow_unsigned`
+- `trusted_signers` keyed by signer ID with base64 or hex Ed25519 public keys
+
 ## Second runtime path
 
 The SDK now also has a **Starlark** runtime scaffold under:
@@ -160,6 +198,46 @@ github.com/go-mirofish/go-mirofish/gateway/sdk/plugins/starlark
 ```
 
 Use that path for deterministic, Python-like plugin logic when you do not need Wasm-level language portability.
+
+## Runtime-neutral plugin manager
+
+The headless SDK now also exposes one registry/manager surface across Wasm and Starlark:
+
+```go
+wasmRuntime, err := headless.NewWasmRuntime(ctx, pluginwasm.DefaultConfig())
+if err != nil {
+  return err
+}
+
+starlarkRuntime := pluginstarlark.NewRuntime()
+
+manager, err := headless.NewPluginManager(wasmRuntime, starlarkRuntime)
+if err != nil {
+  return err
+}
+
+if err := manager.RegisterDirs(
+  "examples/wasm-greeter",
+  "examples/starlark-greeter",
+); err != nil {
+  return err
+}
+
+result, err := manager.InvokeByName(ctx, "starlark-greeter", []byte("SDK"))
+if err != nil {
+  return err
+}
+```
+
+## Signing helpers
+
+The trust package now includes first-party signing helpers as well as verification:
+
+- `LoadPrivateKeyFile(path)`
+- `ParsePrivateKey(raw)`
+- `SignManifestAndModule(manifest, module, signerID, privateKey)`
+
+This keeps digest + signature generation aligned with the same trust payload that verification uses.
 
 ## Current release note
 

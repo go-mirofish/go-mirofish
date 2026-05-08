@@ -40,7 +40,7 @@ func (r *Runtime) LoadFromDir(dir string) (*Program, error) {
 	if err != nil {
 		return nil, err
 	}
-	if reg.Manifest.Runtime != "starlark" {
+	if plugins.NormalizeRuntime(reg.Manifest.Runtime) != plugins.RuntimeStarlark {
 		return nil, fmt.Errorf("plugin runtime mismatch: got %q", reg.Manifest.Runtime)
 	}
 	return r.LoadFromFiles(reg.ManifestPath, reg.ModulePath)
@@ -63,8 +63,12 @@ func (r *Runtime) LoadFromBytes(manifest plugins.Manifest, source []byte) (*Prog
 }
 
 func (r *Runtime) LoadFromBytesWithConfig(manifest plugins.Manifest, source []byte, cfg Config) (*Program, error) {
-	if manifest.Runtime != "starlark" {
+	if plugins.NormalizeRuntime(manifest.Runtime) != plugins.RuntimeStarlark {
 		return nil, fmt.Errorf("plugin runtime mismatch: got %q", manifest.Runtime)
+	}
+	manifest.Runtime = plugins.RuntimeStarlark
+	if manifest.Module == "" {
+		manifest.Module = plugins.DefaultStarlarkModuleFilename
 	}
 	if err := plugins.ValidateManifest(manifest); err != nil {
 		return nil, err

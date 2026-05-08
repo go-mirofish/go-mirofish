@@ -17,3 +17,8 @@ Portable pieces now available:
 - capability set
 - directory discovery
 - registry / registration model
+- runtime-aware default module resolution:
+  - `wasm` -> `plugin.wasm`
+  - `starlark` -> `plugin.star`
+- file-backed trust policy loading
+- signing helpers for manifest + module release artifacts
