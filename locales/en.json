@@ -63,6 +63,7 @@
     "navBenchmark": "Benchmarks",
     "navShowcase": "Showcase",
     "navContributing": "Contributing",
+    "navAdr": "Architecture ADR",
     "titleDocs": "Documentation",
     "titleOverview": "Documentation overview",
     "titleInstallation": "Installation",
@@ -149,6 +150,7 @@
     "titleRoadmap": "Roadmap",
     "navFutureConsideration": "Future consideration",
     "titleFutureConsideration": "Future consideration",
+    "titleAdr": "Architecture ADR",
     "bench": {
       "tocSummary": "Summary & run",
       "tocMetrics": "Key metrics",

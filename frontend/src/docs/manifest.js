@@ -107,6 +107,13 @@ export const DOCS_GROUPS = [
         type: 'markdown',
         sourcePath: 'docs/roadmap/future-consideration.md',
       },
+      {
+        key: 'adr',
+        titleKey: 'docs.navAdr',
+        path: '/docs/adr',
+        type: 'markdown',
+        sourcePath: 'docs/adr/0001-full-state-development-sequencing.md',
+      },
     ],
   },
 ]
