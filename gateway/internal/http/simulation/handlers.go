@@ -13,6 +13,7 @@ import (
 	intgraph "github.com/go-mirofish/go-mirofish/gateway/internal/graph"
 	simulation "github.com/go-mirofish/go-mirofish/gateway/internal/simulation"
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
+	sovereignstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/sovereign"
 	intworker "github.com/go-mirofish/go-mirofish/gateway/internal/worker"
 )
 
@@ -106,6 +107,16 @@ func (h *Handler) HandleRoute(w http.ResponseWriter, r *http.Request) {
 		h.handleSimulationState(w, simulationID)
 	case "status", "run-status":
 		h.handleRunStatus(w, simulationID)
+	case "sovereign-status":
+		h.handleSovereignStatus(w, r, simulationID)
+	case "sovereign-tick":
+		h.handleSovereignTick(w, r, simulationID)
+	case "sovereign-truth":
+		h.handleSovereignTruth(w, r, simulationID)
+	case "sovereign-memory":
+		h.handleSovereignMemory(w, r, simulationID)
+	case "sovereign-compact":
+		h.handleSovereignCompact(w, r, simulationID)
 	case "run-status/detail":
 		h.handleRunStatusDetail(w, r, simulationID)
 	case "profiles", "profiles/realtime":
@@ -499,8 +510,12 @@ func (h *Handler) handleSimulationState(w http.ResponseWriter, simulationID stri
 	runnerStatus := "idle"
 	if runState, runErr := h.store.ReadRunState(simulationID); runErr == nil {
 		normalized := simulation.NormalizeRunStatus(simulationID, runState)
-		state["runner_status"] = normalized["runner_status"]
-		if value := stringValue(normalized["runner_status"]); value != "" {
+		statusValue := stringValue(normalized["runner_status"])
+		if (statusValue == "running" || statusValue == "starting") && !h.service.NativeRunnerActiveStatus(simulationID) {
+			statusValue = "idle"
+		}
+		state["runner_status"] = statusValue
+		if value := statusValue; value != "" {
 			runnerStatus = value
 		}
 	}
@@ -508,6 +523,10 @@ func (h *Handler) handleSimulationState(w http.ResponseWriter, simulationID stri
 		if runnerStatus == "idle" || runnerStatus == "stopped" || runnerStatus == "failed" || runnerStatus == "completed" {
 			state["run_instructions"] = simulation.BuildRunInstructions(h.store.SimulationDir(simulationID), h.store.ScriptsDir, simulationID)
 		}
+	}
+	if sovereignState, err := h.service.ObservedSovereignRuntime(context.Background(), simulationID); err == nil && sovereignState != nil {
+		state["sovereign"] = sovereignState
+		simulation.ApplySovereignSummaryOverlay(state, sovereignState)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": state})
 }
@@ -525,13 +544,21 @@ func (h *Handler) handleProfiles(w http.ResponseWriter, simulationID, platform s
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
-	state, _ := h.store.ReadState(simulationID)
+	state, err := h.store.ReadState(simulationID)
+	if err != nil {
+		state = map[string]any{}
+	}
+	if sovereignState, err := h.service.ObservedSovereignRuntime(context.Background(), simulationID); err == nil && sovereignState != nil {
+		state["sovereign"] = sovereignState
+		simulation.ApplySovereignSummaryOverlay(state, sovereignState)
+	}
 	status := stringValue(state["status"])
 	writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"data": map[string]any{
 			"simulation_id":    simulationID,
 			"platform":         platform,
+			"status":           status,
 			"count":            len(profiles),
 			"total_expected":   intValue(state["entities_count"]),
 			"is_generating":    status == "preparing",
@@ -569,10 +596,18 @@ func (h *Handler) handleConfigRealtime(w http.ResponseWriter, simulationID strin
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
-	state, _ := h.store.ReadState(simulationID)
+	state, err := h.store.ReadState(simulationID)
+	if err != nil {
+		state = map[string]any{}
+	}
+	if sovereignState, err := h.service.ObservedSovereignRuntime(context.Background(), simulationID); err == nil && sovereignState != nil {
+		state["sovereign"] = sovereignState
+		simulation.ApplySovereignSummaryOverlay(state, sovereignState)
+	}
 	status := stringValue(state["status"])
 	data := map[string]any{
 		"simulation_id":    simulationID,
+		"status":           status,
 		"file_exists":      exists,
 		"file_modified_at": modifiedAt,
 		"is_generating":    status == "preparing",
@@ -603,6 +638,11 @@ func (h *Handler) handleRunStatus(w http.ResponseWriter, simulationID string) {
 		runState = nil
 	}
 	data := simulation.NormalizeRunStatus(simulationID, runState)
+	if !h.service.NativeRunnerActiveStatus(simulationID) {
+		if rs, _ := data["runner_status"].(string); rs == "running" || rs == "starting" {
+			data["runner_status"] = "idle"
+		}
+	}
 	if rt, err2 := h.store.ReadRuntimeState(simulationID); err2 == nil {
 		switch strings.TrimSpace(stringify(rt["status"])) {
 		case "completed":
@@ -610,7 +650,10 @@ func (h *Handler) handleRunStatus(w http.ResponseWriter, simulationID string) {
 		case "failed":
 			data["runner_status"] = "failed"
 		case "running":
-			if rs, _ := data["runner_status"].(string); rs == "" || rs == "idle" {
+			if (func() bool {
+				rs, _ := data["runner_status"].(string)
+				return rs == "" || rs == "idle"
+			})() && h.service.NativeRunnerActiveStatus(simulationID) {
 				data["runner_status"] = "running"
 			}
 		case "stopped":
@@ -619,6 +662,150 @@ func (h *Handler) handleRunStatus(w http.ResponseWriter, simulationID string) {
 		if rt["error"] != nil && strings.TrimSpace(fmt.Sprint(rt["error"])) != "" {
 			data["error"] = rt["error"]
 		}
+	}
+	if sovereignState, err := h.service.ObservedSovereignRuntime(context.Background(), simulationID); err == nil && sovereignState != nil {
+		data["sovereign"] = sovereignState
+		switch stringValue(sovereignState["status"]) {
+		case "running":
+			if stringValue(data["runner_status"]) == "" || stringValue(data["runner_status"]) == "idle" {
+				data["runner_status"] = "running"
+			}
+		case "completed":
+			data["runner_status"] = "completed"
+		case "failed":
+			data["runner_status"] = "failed"
+		case "stopped":
+			data["runner_status"] = "stopped"
+		}
+		if intValue(data["current_round"]) <= intValue(sovereignState["current_tick"]) {
+			data["current_round"] = sovereignState["current_tick"]
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": data})
+}
+
+func (h *Handler) handleSovereignStatus(w http.ResponseWriter, r *http.Request, simulationID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	data, err := h.service.ObservedSovereignRuntime(r.Context(), simulationID)
+	if err != nil {
+		if err == sovereignstore.ErrSimulationRuntimeNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	if data == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": data})
+}
+
+func (h *Handler) handleSovereignTick(w http.ResponseWriter, r *http.Request, simulationID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	data, err := h.service.AdvanceSovereignTick(r.Context(), simulationID)
+	if err != nil {
+		if err == sovereignstore.ErrSimulationRuntimeNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	if data == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": data})
+}
+
+func (h *Handler) handleSovereignTruth(w http.ResponseWriter, r *http.Request, simulationID string) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := h.service.SovereignTruth(r.Context(), simulationID)
+		if err != nil {
+			if err == sovereignstore.ErrSimulationRuntimeNotFound {
+				writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		if items == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": map[string]any{"simulation_id": simulationID, "claims": items}})
+	case http.MethodPost:
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "invalid JSON body"})
+			return
+		}
+		item, err := h.service.RecordSovereignTruth(r.Context(), simulationID, payload)
+		if err != nil {
+			if err == sovereignstore.ErrSimulationRuntimeNotFound {
+				writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		if item == nil {
+			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": item})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) handleSovereignMemory(w http.ResponseWriter, r *http.Request, simulationID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	items, err := h.service.SovereignMemory(r.Context(), simulationID)
+	if err != nil {
+		if err == sovereignstore.ErrSimulationRuntimeNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	if items == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": map[string]any{"simulation_id": simulationID, "summaries": items}})
+}
+
+func (h *Handler) handleSovereignCompact(w http.ResponseWriter, r *http.Request, simulationID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	data, err := h.service.CompactSovereignMemory(r.Context(), simulationID)
+	if err != nil {
+		if err == sovereignstore.ErrSimulationRuntimeNotFound {
+			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	if data == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": data})
 }

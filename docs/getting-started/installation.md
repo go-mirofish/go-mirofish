@@ -33,6 +33,9 @@ cp .env.example .env
 | `LLM_API_KEY` | Yes (default cloud path) | For the LLM route. |
 | `ZEP_API_KEY` | Yes (default cloud path) | For graph memory. |
 | `VITE_GATEWAY_PROXY_TARGET` | Optional | Defaults to `http://127.0.0.1:3000` in `frontend/vite.config.js` — must match the Docker gateway port. |
+| `SOVEREIGN_ENABLED` | Optional | Set to `true` to enable the first Governor + SQLite sovereign-core slice. |
+| `SOVEREIGN_PROFILE` | Optional | Current profile baseline is `workstation`. |
+| `SOVEREIGN_SQLITE_PATH` | Optional | Defaults to `data/simulations/sovereign.db`. |
 
 > [!NOTE]
 > Optional lines you are not using should be left out of `.env` rather than set to empty.
@@ -82,6 +85,31 @@ Open **[http://127.0.0.1:5173](http://127.0.0.1:5173)**. API calls from the app 
 **This is not the canonical development path.** Use only for stepping through the gateway in a debugger. The supported API surface for day-to-day work is **`make up`**.
 
 After `cp .env`, `make gateway` runs the gateway on the host with `GATEWAY_PORT=3000` and `FRONTEND_DEV_URL=http://127.0.0.1:5173`. Never run Docker `make up` and `make gateway` at the same time on :3000.
+
+## Sovereign mode (optional)
+
+To enable the first sovereign-core foundation slice:
+
+```bash
+SOVEREIGN_ENABLED=true
+SOVEREIGN_PROFILE=workstation
+```
+
+This adds SQLite-backed sovereign runtime state and two simulation routes:
+
+- `GET /api/simulation/:id/sovereign-status`
+- `POST /api/simulation/:id/sovereign-tick`
+- `GET|POST /api/simulation/:id/sovereign-truth`
+- `GET /api/simulation/:id/sovereign-memory`
+- `POST /api/simulation/:id/sovereign-compact`
+
+Current profiles:
+
+- `workstation`
+- `constrained_local`
+- `arm64_edge`
+
+This mode is still foundational. It does not yet include full truth scoring, long-horizon memory compaction, or profile-enforced edge scheduling.
 
 ---
 

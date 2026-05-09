@@ -12,8 +12,10 @@ import (
 	"strings"
 	"time"
 
+	intgovernor "github.com/go-mirofish/go-mirofish/gateway/internal/governor"
 	"github.com/go-mirofish/go-mirofish/gateway/internal/runinstructions"
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
+	sovereignstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/sovereign"
 	intworker "github.com/go-mirofish/go-mirofish/gateway/internal/worker"
 )
 
@@ -25,9 +27,10 @@ var (
 )
 
 type Service struct {
-	store  *simulationstore.Store
-	bridge intworker.Bridge
-	now    func() time.Time
+	store    *simulationstore.Store
+	bridge   intworker.Bridge
+	governor *intgovernor.Service
+	now      func() time.Time
 }
 
 func NewService(store *simulationstore.Store, bridge intworker.Bridge) *Service {
@@ -36,6 +39,12 @@ func NewService(store *simulationstore.Store, bridge intworker.Bridge) *Service 
 		bridge: bridge,
 		now:    time.Now,
 	}
+}
+
+func NewServiceWithGovernor(store *simulationstore.Store, bridge intworker.Bridge, governor *intgovernor.Service) *Service {
+	service := NewService(store, bridge)
+	service.governor = governor
+	return service
 }
 
 func (s *Service) Create(req CreateRequest) (map[string]any, error) {
@@ -96,6 +105,16 @@ func (s *Service) Create(req CreateRequest) (map[string]any, error) {
 	if err := s.store.WriteState(simulationID, state); err != nil {
 		return nil, err
 	}
+	if s.governor != nil && s.governor.Enabled() {
+		sovereignState, err := s.governor.InitializeSimulation(context.Background(), simulationID)
+		if err != nil {
+			return nil, err
+		}
+		state["sovereign"] = sovereignRuntimeToMap(sovereignState)
+		if err := s.store.WriteState(simulationID, state); err != nil {
+			return nil, err
+		}
+	}
 	return state, nil
 }
 
@@ -112,6 +131,11 @@ func (s *Service) Delete(ctx context.Context, simulationID string) (map[string]a
 			warnings = append(warnings, stopErr.Error())
 		}
 	}
+	if s.governor != nil && s.governor.Enabled() {
+		if err := s.governor.DeleteSimulation(ctx, simulationID); err != nil {
+			warnings = append(warnings, err.Error())
+		}
+	}
 
 	if err := s.store.DeleteSimulation(simulationID); err != nil {
 		return nil, err
@@ -124,7 +148,11 @@ func (s *Service) Delete(ctx context.Context, simulationID string) (map[string]a
 }
 
 func (s *Service) List(projectID string) ([]map[string]any, error) {
-	return s.store.ListSimulations(strings.TrimSpace(projectID))
+	simulations, err := s.store.ListSimulations(strings.TrimSpace(projectID))
+	if err != nil {
+		return nil, err
+	}
+	return s.enrichSimulationSummaries(simulations, 0)
 }
 
 func (s *Service) History(limit int) ([]map[string]any, error) {
@@ -140,6 +168,13 @@ func (s *Service) History(limit int) ([]map[string]any, error) {
 		simulations = simulations[:limit]
 	}
 
+	return s.enrichSimulationSummaries(simulations, limit)
+}
+
+func (s *Service) enrichSimulationSummaries(simulations []map[string]any, limit int) ([]map[string]any, error) {
+	if limit > 0 && len(simulations) > limit {
+		simulations = simulations[:limit]
+	}
 	enriched := make([]map[string]any, 0, len(simulations))
 	for _, sim := range simulations {
 		simCopy := cloneMap(sim)
@@ -189,6 +224,10 @@ func (s *Service) History(limit int) ([]map[string]any, error) {
 			simCopy["total_actions_count"] = 0
 			simCopy["twitter_actions_count"] = 0
 			simCopy["reddit_actions_count"] = 0
+		}
+		if sovereignState, err := s.ObservedSovereignRuntime(context.Background(), simulationID); err == nil && sovereignState != nil {
+			simCopy["sovereign"] = sovereignState
+			ApplySovereignSummaryOverlay(simCopy, sovereignState)
 		}
 
 		if projectID != "" {
@@ -295,14 +334,95 @@ func (s *Service) Start(ctx context.Context, req intworker.StartRequest) (intwor
 	if req.Platform == "" {
 		req.Platform = intworker.PlatformParallel
 	}
-	return s.bridge.StartSimulation(ctx, req)
+	if s.nativeRunnerActive(req.SimulationID) {
+		return intworker.StartResponse{}, errors.New("simulation already running")
+	}
+	if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+		state, err := s.ensureSovereignInitialized(ctx, req.SimulationID, true)
+		if err != nil {
+			return intworker.StartResponse{}, err
+		}
+		if state.Status == intgovernor.StatusCreated {
+			state, err = s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusCreated}, intgovernor.StatusReady, "")
+			if err != nil {
+				return intworker.StartResponse{}, err
+			}
+			_ = s.syncSovereignControlState(req.SimulationID, state)
+		}
+		state, err = s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusCreated, intgovernor.StatusReady, intgovernor.StatusRunning, intgovernor.StatusStopped, intgovernor.StatusCompleted, intgovernor.StatusFailed}, intgovernor.StatusRunning, "")
+		if err != nil {
+			return intworker.StartResponse{}, err
+		}
+		_ = s.syncSovereignControlState(req.SimulationID, state)
+	}
+	resp, err := s.bridge.StartSimulation(ctx, req)
+	if err != nil {
+		if s.nativeRunnerActive(req.SimulationID) {
+			if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+				if state, markErr := s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusCreated, intgovernor.StatusReady, intgovernor.StatusRunning, intgovernor.StatusStopped, intgovernor.StatusCompleted, intgovernor.StatusFailed}, intgovernor.StatusRunning, ""); markErr == nil {
+					_ = s.syncSovereignControlState(req.SimulationID, state)
+				}
+			}
+			return intworker.StartResponse{}, err
+		}
+		if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+			if state, markErr := s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusReady, intgovernor.StatusRunning}, intgovernor.StatusFailed, err.Error()); markErr == nil {
+				_ = s.syncSovereignControlState(req.SimulationID, state)
+			}
+		}
+		return intworker.StartResponse{}, err
+	}
+	return resp, nil
 }
 
 func (s *Service) Stop(ctx context.Context, req intworker.StopRequest) (map[string]any, error) {
 	if s.bridge == nil {
 		return nil, errors.New("simulation worker bridge unavailable")
 	}
-	return s.bridge.StopSimulation(ctx, req)
+	req.SimulationID = strings.TrimSpace(req.SimulationID)
+	if req.SimulationID == "" {
+		return nil, ErrSimulationIDRequired
+	}
+	if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+		if _, err := s.ensureSovereignInitialized(ctx, req.SimulationID, true); err != nil {
+			return nil, err
+		}
+	}
+	if !s.nativeRunnerActive(req.SimulationID) {
+		runnerStatus := "stopped"
+		if _, err := s.bridge.CloseEnv(ctx, intworker.CloseEnvRequest{SimulationID: req.SimulationID}); err != nil {
+			return nil, err
+		}
+		if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+			if current, statusErr := s.governor.Status(ctx, req.SimulationID); statusErr == nil {
+				switch current.Status {
+				case intgovernor.StatusCompleted, intgovernor.StatusFailed:
+					runnerStatus = current.Status
+				default:
+					if state, markErr := s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusCreated, intgovernor.StatusReady, intgovernor.StatusRunning, intgovernor.StatusStopped}, intgovernor.StatusStopped, ""); markErr == nil {
+						_ = s.syncSovereignControlState(req.SimulationID, state)
+						runnerStatus = state.Status
+					}
+				}
+			}
+		}
+		return map[string]any{"simulation_id": req.SimulationID, "runner_status": runnerStatus}, nil
+	}
+	resp, err := s.bridge.StopSimulation(ctx, req)
+	if err != nil {
+		if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+			if state, markErr := s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusRunning, intgovernor.StatusStopping, intgovernor.StatusReady}, intgovernor.StatusFailed, err.Error()); markErr == nil {
+				_ = s.syncSovereignControlState(req.SimulationID, state)
+			}
+		}
+		return nil, err
+	}
+	if s.governor != nil && s.governor.Enabled() && req.SimulationID != "" {
+		if state, markErr := s.governor.SetStatus(ctx, req.SimulationID, []string{intgovernor.StatusRunning, intgovernor.StatusStopping, intgovernor.StatusReady}, intgovernor.StatusStopped, ""); markErr == nil {
+			_ = s.syncSovereignControlState(req.SimulationID, state)
+		}
+	}
+	return resp, nil
 }
 
 func (s *Service) Interview(ctx context.Context, req intworker.InterviewRequest) (intworker.IPCResult, error) {
@@ -338,6 +458,360 @@ func (s *Service) CloseEnv(ctx context.Context, req intworker.CloseEnvRequest) (
 		return intworker.IPCResult{}, errors.New("simulation worker bridge unavailable")
 	}
 	return s.bridge.CloseEnv(ctx, req)
+}
+
+func (s *Service) SovereignStatus(ctx context.Context, simulationID string) (map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	state, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), false)
+	if err != nil {
+		return nil, err
+	}
+	data := sovereignRuntimeToMap(state)
+	profile := s.governor.Profile()
+	data["profile_config"] = map[string]any{
+		"name":                profile.Name,
+		"tick_interval_ms":    profile.TickIntervalMs,
+		"max_parallel_agents": profile.MaxParallelAgents,
+		"truth_mode":          profile.TruthMode,
+		"compaction_mode":     profile.CompactionMode,
+	}
+	return data, nil
+}
+
+func (s *Service) AdvanceSovereignTick(ctx context.Context, simulationID string) (map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	state, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true)
+	if err != nil {
+		return nil, err
+	}
+	if state.Status == intgovernor.StatusCreated {
+		state, err = s.governor.SetStatus(ctx, strings.TrimSpace(simulationID), []string{intgovernor.StatusCreated}, intgovernor.StatusReady, "")
+		if err != nil {
+			return nil, err
+		}
+		_ = s.syncSovereignControlState(strings.TrimSpace(simulationID), state)
+	}
+	if _, err := s.ReconcileSovereignRuntime(ctx, strings.TrimSpace(simulationID)); err != nil && err != sovereignstore.ErrSimulationRuntimeNotFound {
+		return nil, err
+	}
+	if s.nativeRunnerActive(simulationID) {
+		return nil, errors.New("sovereign tick is unavailable while native runner is active")
+	}
+	state, err = s.governor.AdvanceTick(ctx, strings.TrimSpace(simulationID))
+	if err != nil {
+		return nil, err
+	}
+	_ = s.syncSovereignControlState(simulationID, state)
+	return sovereignRuntimeToMap(state), nil
+}
+
+func (s *Service) SovereignTruth(ctx context.Context, simulationID string) ([]map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), false); err != nil {
+		if err == sovereignstore.ErrSimulationRuntimeNotFound {
+			if _, stateErr := s.store.ReadState(strings.TrimSpace(simulationID)); stateErr == nil {
+				return []map[string]any{}, nil
+			}
+		}
+		return nil, err
+	}
+	items, err := s.governor.ListTruthClaims(ctx, strings.TrimSpace(simulationID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{
+			"simulation_id": item.SimulationID,
+			"claim_id":      item.ClaimID,
+			"source":        item.Source,
+			"claim_text":    item.ClaimText,
+			"truth_status":  item.TruthStatus,
+			"confidence":    item.Confidence,
+			"evidence_refs": item.EvidenceRefs,
+			"decay_at":      item.DecayAt,
+			"updated_at":    item.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) RecordSovereignTruth(ctx context.Context, simulationID string, payload map[string]any) (map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true); err != nil {
+		return nil, err
+	}
+	claim, err := s.governor.UpsertTruthClaim(ctx, strings.TrimSpace(simulationID), sovereignstore.TruthClaim{
+		ClaimID:      stringValue(payload["claim_id"]),
+		Source:       stringValue(payload["source"]),
+		ClaimText:    stringValue(payload["claim_text"]),
+		TruthStatus:  firstNonEmpty(stringValue(payload["truth_status"]), "observed"),
+		Confidence:   intValue(payload["confidence"]),
+		EvidenceRefs: stringValue(payload["evidence_refs"]),
+		DecayAt:      stringValue(payload["decay_at"]),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"simulation_id": claim.SimulationID,
+		"claim_id":      claim.ClaimID,
+		"source":        claim.Source,
+		"claim_text":    claim.ClaimText,
+		"truth_status":  claim.TruthStatus,
+		"confidence":    claim.Confidence,
+		"evidence_refs": claim.EvidenceRefs,
+		"decay_at":      claim.DecayAt,
+		"updated_at":    claim.UpdatedAt,
+	}, nil
+}
+
+func (s *Service) SovereignMemory(ctx context.Context, simulationID string) ([]map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), false); err != nil {
+		if err == sovereignstore.ErrSimulationRuntimeNotFound {
+			if _, stateErr := s.store.ReadState(strings.TrimSpace(simulationID)); stateErr == nil {
+				return []map[string]any{}, nil
+			}
+		}
+		return nil, err
+	}
+	items, err := s.governor.ListMemorySummaries(ctx, strings.TrimSpace(simulationID))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		out = append(out, map[string]any{
+			"simulation_id": item.SimulationID,
+			"summary_id":    item.SummaryID,
+			"scope":         item.Scope,
+			"start_tick":    item.StartTick,
+			"end_tick":      item.EndTick,
+			"content":       item.Content,
+			"created_at":    item.CreatedAt,
+		})
+	}
+	return out, nil
+}
+
+func (s *Service) CompactSovereignMemory(ctx context.Context, simulationID string) (map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true); err != nil {
+		return nil, err
+	}
+	if _, err := s.ReconcileSovereignRuntime(ctx, strings.TrimSpace(simulationID)); err != nil && err != sovereignstore.ErrSimulationRuntimeNotFound {
+		return nil, err
+	}
+	summary, err := s.governor.Compact(ctx, strings.TrimSpace(simulationID))
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"simulation_id": summary.SimulationID,
+		"summary_id":    summary.SummaryID,
+		"scope":         summary.Scope,
+		"start_tick":    summary.StartTick,
+		"end_tick":      summary.EndTick,
+		"content":       summary.Content,
+		"created_at":    summary.CreatedAt,
+	}, nil
+}
+
+func (s *Service) ReconcileSovereignRuntime(ctx context.Context, simulationID string) (map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), false); err != nil {
+		return nil, err
+	}
+	target := ""
+	lastError := ""
+	activeRunner := s.nativeRunnerActive(simulationID)
+	if runState, err := s.store.ReadRunState(strings.TrimSpace(simulationID)); err == nil {
+		normalized := NormalizeRunStatus(simulationID, runState)
+		switch stringValue(normalized["runner_status"]) {
+		case "running", "starting":
+			if activeRunner {
+				target = intgovernor.StatusRunning
+			}
+		case "completed":
+			target = intgovernor.StatusCompleted
+		case "failed":
+			target = intgovernor.StatusFailed
+		case "stopped":
+			target = intgovernor.StatusStopped
+		}
+		if target != "" {
+			lastError = stringValue(runState["error"])
+		}
+	}
+	runtimeState, err := s.store.ReadRuntimeState(strings.TrimSpace(simulationID))
+	if err != nil {
+		if isNotExist(err) {
+			return s.SovereignStatus(ctx, simulationID)
+		}
+		return nil, err
+	}
+	switch stringValue(runtimeState["status"]) {
+	case "completed":
+		if !activeRunner {
+			target = intgovernor.StatusCompleted
+		}
+	case "failed":
+		if !activeRunner {
+			target = intgovernor.StatusFailed
+		}
+	case "stopped":
+		if !activeRunner {
+			target = intgovernor.StatusStopped
+		}
+	case "running":
+		if target == "" && activeRunner {
+			target = intgovernor.StatusRunning
+		}
+	}
+	if target != "" {
+		if lastError == "" {
+			lastError = stringValue(runtimeState["error"])
+		}
+		current, err := s.governor.Status(ctx, simulationID)
+		if err == nil {
+			if shouldPreferGovernorRunning(current.UpdatedAt, current.Status, target, runStateTimestamp(runtimeState)) {
+				target = current.Status
+				lastError = current.LastError
+			}
+			current.Status = target
+			current.LastError = lastError
+			if runState, err := s.store.ReadRunState(strings.TrimSpace(simulationID)); err == nil {
+				current.CurrentTick = intValue(NormalizeRunStatus(simulationID, runState)["current_round"])
+			} else if intValue(runtimeState["current_round"]) > current.CurrentTick {
+				current.CurrentTick = intValue(runtimeState["current_round"])
+			}
+			state, syncErr := s.governor.SyncRuntimeState(ctx, current)
+			if syncErr == nil {
+				_ = s.syncSovereignControlState(simulationID, state)
+			}
+		}
+	}
+	return s.SovereignStatus(ctx, simulationID)
+}
+
+func (s *Service) ObservedSovereignRuntime(ctx context.Context, simulationID string) (map[string]any, error) {
+	if s.governor == nil || !s.governor.Enabled() {
+		return nil, nil
+	}
+	base, err := s.SovereignStatus(ctx, simulationID)
+	if err != nil {
+		if err != sovereignstore.ErrSimulationRuntimeNotFound {
+			return nil, err
+		}
+		state, stateErr := s.store.ReadState(simulationID)
+		if stateErr != nil {
+			if isNotExist(stateErr) {
+				return nil, sovereignstore.ErrSimulationRuntimeNotFound
+			}
+			return nil, stateErr
+		}
+		baseStatus := stringValue(state["status"])
+		if s.nativeRunnerActive(simulationID) {
+			switch baseStatus {
+			case intgovernor.StatusCompleted, intgovernor.StatusFailed, intgovernor.StatusStopped:
+				baseStatus = intgovernor.StatusRunning
+			}
+		}
+		base = map[string]any{
+			"simulation_id": simulationID,
+			"mode":          intgovernor.ModeSovereign,
+			"profile":       s.governor.Profile().Name,
+			"status":        baseStatus,
+			"current_tick":  intValue(state["current_round"]),
+			"last_tick_at":  "",
+			"last_error":    "",
+			"created_at":    stringValue(state["created_at"]),
+			"updated_at":    stringValue(state["updated_at"]),
+			"profile_config": map[string]any{
+				"name":                s.governor.Profile().Name,
+				"tick_interval_ms":    s.governor.Profile().TickIntervalMs,
+				"max_parallel_agents": s.governor.Profile().MaxParallelAgents,
+				"truth_mode":          s.governor.Profile().TruthMode,
+				"compaction_mode":     s.governor.Profile().CompactionMode,
+			},
+		}
+	}
+	if base == nil {
+		return nil, nil
+	}
+	out := cloneMap(base)
+	target := ""
+	lastError := ""
+	activeRunner := s.nativeRunnerActive(simulationID)
+	if runState, err := s.store.ReadRunState(strings.TrimSpace(simulationID)); err == nil {
+		normalized := NormalizeRunStatus(simulationID, runState)
+		switch stringValue(normalized["runner_status"]) {
+		case "running", "starting":
+			if activeRunner {
+				target = intgovernor.StatusRunning
+			}
+		case "completed":
+			target = intgovernor.StatusCompleted
+		case "failed":
+			target = intgovernor.StatusFailed
+		case "stopped":
+			target = intgovernor.StatusStopped
+		}
+		out["current_tick"] = intValue(normalized["current_round"])
+		lastError = stringValue(runState["error"])
+	}
+	if runtimeState, err := s.store.ReadRuntimeState(strings.TrimSpace(simulationID)); err == nil {
+		switch stringValue(runtimeState["status"]) {
+		case "completed":
+			if !activeRunner {
+				target = intgovernor.StatusCompleted
+			}
+		case "failed":
+			if !activeRunner {
+				target = intgovernor.StatusFailed
+			}
+		case "stopped":
+			if !activeRunner {
+				target = intgovernor.StatusStopped
+			}
+		case "running":
+			if target == "" && activeRunner {
+				target = intgovernor.StatusRunning
+			}
+		}
+		if lastError == "" {
+			lastError = stringValue(runtimeState["error"])
+		}
+		if intValue(runtimeState["current_round"]) > intValue(out["current_tick"]) {
+			out["current_tick"] = intValue(runtimeState["current_round"])
+		}
+		if shouldPreferGovernorRunning(stringValue(base["updated_at"]), stringValue(base["status"]), target, runStateTimestamp(runtimeState)) {
+			target = stringValue(base["status"])
+			lastError = stringValue(base["last_error"])
+		}
+	}
+	if target != "" {
+		out["status"] = target
+		if lastError != "" {
+			out["last_error"] = lastError
+		}
+	}
+	return out, nil
 }
 
 func (s *Service) Actions(simulationID, platform string, limit, offset int) ([]Action, error) {
@@ -522,24 +996,24 @@ func NormalizeRunStatus(simulationID string, raw map[string]any) map[string]any 
 	}
 
 	data := map[string]any{
-		"simulation_id":            firstNonEmpty(stringValue(raw["simulation_id"]), simulationID),
-		"runner_status":            firstNonEmpty(stringValue(raw["runner_status"]), "idle"),
-		"current_round":            intValue(raw["current_round"]),
-		"total_rounds":             intValue(raw["total_rounds"]),
-		"progress_percent":         floatValue(raw["progress_percent"]),
-		"simulated_hours":          intValue(raw["simulated_hours"]),
-		"total_simulation_hours":   intValue(raw["total_simulation_hours"]),
-		"twitter_current_round":    intValue(firstNonNil(raw["twitter_current_round"], raw["twitter_round"])),
-		"reddit_current_round":     intValue(firstNonNil(raw["reddit_current_round"], raw["reddit_round"])),
-		"twitter_simulated_hours":  intValue(raw["twitter_simulated_hours"]),
-		"reddit_simulated_hours":   intValue(raw["reddit_simulated_hours"]),
-		"twitter_running":          boolValue(raw["twitter_running"]),
-		"reddit_running":           boolValue(raw["reddit_running"]),
-		"twitter_completed":        boolValue(raw["twitter_completed"]),
-		"reddit_completed":         boolValue(raw["reddit_completed"]),
-		"twitter_actions_count":    intValue(raw["twitter_actions_count"]),
-		"reddit_actions_count":     intValue(raw["reddit_actions_count"]),
-		"total_actions_count":      intValue(raw["total_actions_count"]),
+		"simulation_id":           firstNonEmpty(stringValue(raw["simulation_id"]), simulationID),
+		"runner_status":           firstNonEmpty(stringValue(raw["runner_status"]), "idle"),
+		"current_round":           intValue(raw["current_round"]),
+		"total_rounds":            intValue(raw["total_rounds"]),
+		"progress_percent":        floatValue(raw["progress_percent"]),
+		"simulated_hours":         intValue(raw["simulated_hours"]),
+		"total_simulation_hours":  intValue(raw["total_simulation_hours"]),
+		"twitter_current_round":   intValue(firstNonNil(raw["twitter_current_round"], raw["twitter_round"])),
+		"reddit_current_round":    intValue(firstNonNil(raw["reddit_current_round"], raw["reddit_round"])),
+		"twitter_simulated_hours": intValue(raw["twitter_simulated_hours"]),
+		"reddit_simulated_hours":  intValue(raw["reddit_simulated_hours"]),
+		"twitter_running":         boolValue(raw["twitter_running"]),
+		"reddit_running":          boolValue(raw["reddit_running"]),
+		"twitter_completed":       boolValue(raw["twitter_completed"]),
+		"reddit_completed":        boolValue(raw["reddit_completed"]),
+		"twitter_actions_count":   intValue(raw["twitter_actions_count"]),
+		"reddit_actions_count":    intValue(raw["reddit_actions_count"]),
+		"total_actions_count":     intValue(raw["total_actions_count"]),
 	}
 	for _, key := range []string{"started_at", "updated_at", "completed_at", "error"} {
 		if raw[key] != nil {
@@ -734,6 +1208,29 @@ func shouldStopRunState(runState map[string]any) bool {
 	}
 }
 
+func (s *Service) NativeRunnerActiveStatus(simulationID string) bool {
+	return s.nativeRunnerActive(simulationID)
+}
+
+func (s *Service) nativeRunnerActive(simulationID string) bool {
+	type sessionAlive interface {
+		SessionAlive(string) bool
+	}
+	if bridge, ok := s.bridge.(sessionAlive); ok && !bridge.SessionAlive(strings.TrimSpace(simulationID)) {
+		return false
+	}
+	if runState, err := s.store.ReadRunState(strings.TrimSpace(simulationID)); err == nil {
+		return shouldStopRunState(runState)
+	}
+	if runtimeState, err := s.store.ReadRuntimeState(strings.TrimSpace(simulationID)); err == nil {
+		switch stringValue(runtimeState["status"]) {
+		case "starting", "running", "paused", "stopping":
+			return true
+		}
+	}
+	return false
+}
+
 func roundCount(runState map[string]any, actionSets ...[]Action) int {
 	if rounds, ok := runState["rounds"].([]any); ok {
 		return len(rounds)
@@ -745,6 +1242,202 @@ func roundCount(runState map[string]any, actionSets ...[]Action) int {
 		}
 	}
 	return len(unique)
+}
+
+func sovereignRuntimeToMap(state sovereignstore.RuntimeState) map[string]any {
+	return map[string]any{
+		"simulation_id": state.SimulationID,
+		"mode":          state.Mode,
+		"profile":       state.Profile,
+		"status":        state.Status,
+		"current_tick":  state.CurrentTick,
+		"last_tick_at":  state.LastTickAt,
+		"last_error":    state.LastError,
+		"created_at":    state.CreatedAt,
+		"updated_at":    state.UpdatedAt,
+	}
+}
+
+func ApplySovereignSummaryOverlay(payload map[string]any, sovereignState map[string]any) {
+	if payload == nil || sovereignState == nil {
+		return
+	}
+	shouldPromote := false
+	switch stringValue(payload["status"]) {
+	case "ready", "running", "stopped", "completed", "failed":
+		shouldPromote = true
+	case "created":
+		switch stringValue(sovereignState["status"]) {
+		case "running", "stopped", "completed", "failed":
+			shouldPromote = true
+		default:
+			if intValue(sovereignState["current_tick"]) > 0 {
+				shouldPromote = true
+			}
+		}
+	}
+	if !shouldPromote {
+		return
+	}
+	if status, ok := sovereignState["status"]; ok {
+		payload["status"] = status
+	}
+	if tick, ok := sovereignState["current_tick"]; ok {
+		if intValue(payload["current_round"]) <= intValue(tick) {
+			payload["current_round"] = tick
+		}
+	}
+	if updatedAt, ok := sovereignState["updated_at"]; ok {
+		payload["updated_at"] = updatedAt
+	}
+}
+
+func shouldPreferGovernorRunning(currentUpdatedAt, currentStatus, targetStatus, runtimeTimestamp string) bool {
+	if currentStatus != intgovernor.StatusRunning {
+		return false
+	}
+	switch targetStatus {
+	case intgovernor.StatusCompleted, intgovernor.StatusFailed, intgovernor.StatusStopped:
+	default:
+		return false
+	}
+	if runtimeTimestamp == "" {
+		return false
+	}
+	currentTime, err1 := time.Parse(time.RFC3339, currentUpdatedAt)
+	runtimeTime, err2 := time.Parse(time.RFC3339, runtimeTimestamp)
+	if err1 != nil || err2 != nil {
+		return false
+	}
+	return runtimeTime.Before(currentTime)
+}
+
+func runStateTimestamp(payload map[string]any) string {
+	for _, key := range []string{"updated_at", "completed_at", "timestamp", "started_at"} {
+		if value := stringValue(payload[key]); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func (s *Service) ensureSovereignInitialized(ctx context.Context, simulationID string, create bool) (sovereignstore.RuntimeState, error) {
+	state, err := s.governor.Status(ctx, simulationID)
+	if err == nil {
+		return state, nil
+	}
+	if err != sovereignstore.ErrSimulationRuntimeNotFound {
+		return sovereignstore.RuntimeState{}, err
+	}
+	if !create {
+		return sovereignstore.RuntimeState{}, sovereignstore.ErrSimulationRuntimeNotFound
+	}
+	if _, err := s.store.ReadState(simulationID); err != nil {
+		if isNotExist(err) {
+			return sovereignstore.RuntimeState{}, sovereignstore.ErrSimulationRuntimeNotFound
+		}
+		return sovereignstore.RuntimeState{}, err
+	}
+	seed, err := s.legacySovereignSeed(simulationID)
+	if err != nil {
+		return sovereignstore.RuntimeState{}, err
+	}
+	return s.governor.AdoptSimulation(ctx, seed)
+}
+
+func (s *Service) legacySovereignSeed(simulationID string) (sovereignstore.RuntimeState, error) {
+	state, err := s.store.ReadState(simulationID)
+	if err != nil {
+		return sovereignstore.RuntimeState{}, err
+	}
+	seedStatus := firstNonEmpty(stringValue(state["status"]), intgovernor.StatusCreated)
+	if s.nativeRunnerActive(simulationID) {
+		switch seedStatus {
+		case intgovernor.StatusCompleted, intgovernor.StatusFailed, intgovernor.StatusStopped:
+			seedStatus = intgovernor.StatusRunning
+		}
+	}
+	seed := sovereignstore.RuntimeState{
+		SimulationID: simulationID,
+		Mode:         intgovernor.ModeSovereign,
+		Profile:      s.governor.Profile().Name,
+		Status:       seedStatus,
+		CurrentTick:  intValue(state["current_round"]),
+		CreatedAt:    stringValue(state["created_at"]),
+		UpdatedAt:    stringValue(state["updated_at"]),
+	}
+	if runState, err := s.store.ReadRunState(simulationID); err == nil {
+		normalized := NormalizeRunStatus(simulationID, runState)
+		seed.CurrentTick = intValue(normalized["current_round"])
+		switch stringValue(normalized["runner_status"]) {
+		case "running", "starting":
+			seed.Status = intgovernor.StatusRunning
+		case "completed":
+			seed.Status = intgovernor.StatusCompleted
+		case "failed":
+			seed.Status = intgovernor.StatusFailed
+		case "stopped":
+			seed.Status = intgovernor.StatusStopped
+		}
+		seed.LastError = stringValue(runState["error"])
+	}
+	if runtimeState, err := s.store.ReadRuntimeState(simulationID); err == nil {
+		activeRunner := s.nativeRunnerActive(simulationID)
+		switch stringValue(runtimeState["status"]) {
+		case "running":
+			if seed.Status == "" || seed.Status == intgovernor.StatusCreated || seed.Status == intgovernor.StatusReady {
+				seed.Status = intgovernor.StatusRunning
+			}
+		case "completed":
+			if !activeRunner {
+				seed.Status = intgovernor.StatusCompleted
+			}
+		case "failed":
+			if !activeRunner {
+				seed.Status = intgovernor.StatusFailed
+			}
+		case "stopped":
+			if !activeRunner {
+				seed.Status = intgovernor.StatusStopped
+			}
+		}
+		if seed.LastError == "" {
+			seed.LastError = stringValue(runtimeState["error"])
+		}
+		if intValue(runtimeState["current_round"]) > seed.CurrentTick {
+			seed.CurrentTick = intValue(runtimeState["current_round"])
+		}
+	}
+	if seed.CreatedAt == "" {
+		seed.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	if seed.UpdatedAt == "" {
+		seed.UpdatedAt = seed.CreatedAt
+	}
+	if seed.Status == "" {
+		seed.Status = intgovernor.StatusCreated
+	}
+	return seed, nil
+}
+
+func (s *Service) syncSovereignControlState(simulationID string, state sovereignstore.RuntimeState) error {
+	payload, err := s.store.ReadState(simulationID)
+	if err != nil {
+		if !isNotExist(err) {
+			return err
+		}
+		payload = map[string]any{
+			"simulation_id": simulationID,
+		}
+	}
+	if payload["project_id"] == nil {
+		payload["project_id"] = ""
+	}
+	if payload["graph_id"] == nil {
+		payload["graph_id"] = ""
+	}
+	payload["sovereign"] = sovereignRuntimeToMap(state)
+	return s.store.WriteState(simulationID, payload)
 }
 
 func newSimulationID() (string, error) {

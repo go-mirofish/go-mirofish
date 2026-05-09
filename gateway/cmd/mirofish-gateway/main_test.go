@@ -9,10 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	simulationhttp "github.com/go-mirofish/go-mirofish/gateway/internal/http/simulation"
 )
 
+var simulationHandlers sync.Map
 
 func newTestGateway(t *testing.T, _ func(*http.Request) (*http.Response, error)) *gateway {
 	t.Helper()
@@ -23,7 +27,6 @@ func newTestGateway(t *testing.T, _ func(*http.Request) (*http.Response, error))
 		frontendDistDir: "frontend/dist",
 	})
 }
-
 
 func newWorkerGateway(t *testing.T) *gateway {
 	t.Helper()
@@ -40,7 +43,9 @@ func newWorkerGateway(t *testing.T) *gateway {
 
 func serveSimulation(t *testing.T, gw *gateway, req *http.Request, rec *httptest.ResponseRecorder) {
 	t.Helper()
-	buildSimulationHandler(gw.cfg).HandleRoute(rec, req)
+	handlerAny, _ := simulationHandlers.LoadOrStore(gw, buildSimulationHandler(gw.cfg))
+	handler := handlerAny.(*simulationhttp.Handler)
+	handler.HandleRoute(rec, req)
 }
 
 func writeGatewayJSON(t *testing.T, path string, payload any) {
@@ -237,8 +242,8 @@ func TestSimulationRunStatusControlPlaneUsesDurableRunState(t *testing.T) {
 			t.Fatalf("decode response: %v", err)
 		}
 		data := payload["data"].(map[string]any)
-		if data["runner_status"] != "running" {
-			t.Fatalf("expected running, got %#v", data["runner_status"])
+		if data["runner_status"] != "idle" {
+			t.Fatalf("expected idle without a live session, got %#v", data["runner_status"])
 		}
 		if data["current_round"].(float64) != 4 {
 			t.Fatalf("expected current_round 4, got %#v", data["current_round"])
@@ -917,6 +922,48 @@ func TestValidateStartupAndReadiness(t *testing.T) {
 	}
 	if payload["frontend"] != "dist" {
 		t.Fatalf("expected frontend=dist, got %#v", payload["frontend"])
+	}
+}
+
+func TestReadinessWithSovereignEnabled(t *testing.T) {
+	root := t.TempDir()
+	cfg := config{
+		bindHost:        "127.0.0.1",
+		port:            "3000",
+		frontendDistDir: filepath.Join(root, "frontend", "dist"),
+		projectsDir:     filepath.Join(root, "projects"),
+		reportsDir:      filepath.Join(root, "reports"),
+		tasksDir:        filepath.Join(root, "tasks"),
+		simulationsDir:  filepath.Join(root, "simulations"),
+		scriptsDir:      filepath.Join(root, "scripts"),
+	}
+	if err := os.MkdirAll(cfg.frontendDistDir, 0o755); err != nil {
+		t.Fatalf("mkdir frontend dist: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg.frontendDistDir, "index.html"), []byte("<html>ok</html>"), 0o644); err != nil {
+		t.Fatalf("write index.html: %v", err)
+	}
+	if err := validateStartup(cfg); err != nil {
+		t.Fatalf("validateStartup returned error: %v", err)
+	}
+
+	t.Setenv("SOVEREIGN_ENABLED", "true")
+	t.Setenv("SOVEREIGN_PROFILE", "workstation")
+	t.Setenv("SOVEREIGN_SQLITE_PATH", filepath.Join(root, "simulations", "sovereign", "runtime.db"))
+
+	ready := readinessChecker(cfg)
+	payload, err := ready(context.Background())
+	if err != nil {
+		t.Fatalf("expected readiness success, got err=%v payload=%#v", err, payload)
+	}
+	if payload["sovereign_enabled"] != true {
+		t.Fatalf("expected sovereign_enabled=true, got %#v", payload["sovereign_enabled"])
+	}
+	if payload["sovereign_profile"] != "workstation" {
+		t.Fatalf("expected sovereign_profile=workstation, got %#v", payload["sovereign_profile"])
+	}
+	if payload["sovereign_sqlite"] == nil {
+		t.Fatalf("expected sovereign_sqlite path, got %#v", payload["sovereign_sqlite"])
 	}
 }
 

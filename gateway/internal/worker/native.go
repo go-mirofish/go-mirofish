@@ -45,6 +45,12 @@ func NewNativeBridge(simulationsDir string) *NativeBridge {
 	}
 }
 
+func (b *NativeBridge) SessionAlive(simulationID string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.sessions[simulationID] != nil
+}
+
 func (b *NativeBridge) StartSimulation(ctx context.Context, req StartRequest) (StartResponse, error) {
 	if req.SimulationID == "" {
 		return StartResponse{}, workerError("NativeStartSimulation", ErrWorkerBadRequest, "simulation_id is required", nil)
@@ -69,6 +75,23 @@ func (b *NativeBridge) StartSimulation(ctx context.Context, req StartRequest) (S
 	}
 	now := time.Now().Format(time.RFC3339)
 	twitterAvailable, redditAvailable := availablePlatforms(platforms)
+	runCtx, cancel := context.WithCancel(context.Background())
+	session := &nativeSession{
+		cancel:          cancel,
+		done:            make(chan struct{}),
+		platforms:       platforms,
+		agentIDs:        agentIDs,
+		minutesPerRound: minutesPerRound,
+	}
+
+	b.mu.Lock()
+	if existing := b.sessions[req.SimulationID]; existing != nil {
+		b.mu.Unlock()
+		cancel()
+		return StartResponse{}, workerError("NativeStartSimulation", ErrWorkerUnavailable, "simulation already running", nil)
+	}
+	b.sessions[req.SimulationID] = session
+	b.mu.Unlock()
 
 	runState := artifactcontract.RunState{
 		WorkerProtocolVersion: ProtocolVersion,
@@ -95,31 +118,28 @@ func (b *NativeBridge) StartSimulation(ctx context.Context, req StartRequest) (S
 		UpdatedAt:             now,
 	}
 	if err := b.writeRunState(req.SimulationID, runState); err != nil {
+		b.mu.Lock()
+		delete(b.sessions, req.SimulationID)
+		b.mu.Unlock()
+		cancel()
 		return StartResponse{}, workerError("NativeStartSimulation", ErrWorkerUnavailable, "", err)
 	}
 	if err := b.writeRuntimeState(req.SimulationID, runtimeStatePayload(req.SimulationID, runState)); err != nil {
+		b.mu.Lock()
+		delete(b.sessions, req.SimulationID)
+		b.mu.Unlock()
+		b.cleanupBootstrapArtifacts(req.SimulationID)
+		cancel()
 		return StartResponse{}, workerError("NativeStartSimulation", ErrWorkerUnavailable, "", err)
 	}
 	if err := b.writeEnvStatus(req.SimulationID, nativeEnvStatus("alive", now, twitterAvailable, redditAvailable)); err != nil {
+		b.mu.Lock()
+		delete(b.sessions, req.SimulationID)
+		b.mu.Unlock()
+		b.cleanupBootstrapArtifacts(req.SimulationID)
+		cancel()
 		return StartResponse{}, workerError("NativeStartSimulation", ErrWorkerUnavailable, "", err)
 	}
-
-	runCtx, cancel := context.WithCancel(context.Background())
-	session := &nativeSession{
-		cancel:          cancel,
-		done:            make(chan struct{}),
-		platforms:       platforms,
-		agentIDs:        agentIDs,
-		minutesPerRound: minutesPerRound,
-	}
-
-	b.mu.Lock()
-	if existing := b.sessions[req.SimulationID]; existing != nil {
-		b.mu.Unlock()
-		return StartResponse{}, workerError("NativeStartSimulation", ErrWorkerUnavailable, "simulation already running", nil)
-	}
-	b.sessions[req.SimulationID] = session
-	b.mu.Unlock()
 
 	go b.runSimulation(runCtx, req.SimulationID, session, runState)
 	_ = ctx
@@ -383,6 +403,13 @@ func (b *NativeBridge) runSimulation(ctx context.Context, simulationID string, s
 	_ = b.writeRunState(simulationID, state)
 	_ = b.writeRuntimeState(simulationID, runtimeStatePayload(simulationID, state))
 	_ = b.writeEnvStatus(simulationID, nativeEnvStatus("stopped", state.CompletedAt, state.TwitterCompleted, state.RedditCompleted))
+}
+
+func (b *NativeBridge) cleanupBootstrapArtifacts(simulationID string) {
+	simDir := filepath.Join(b.SimulationsDir, simulationID)
+	for _, name := range []string{"run_state.json", "state.json", "env_status.json"} {
+		_ = os.Remove(filepath.Join(simDir, name))
+	}
 }
 
 func (b *NativeBridge) interviewResult(simulationID string, agentID int, prompt string, platform Platform) (map[string]any, error) {

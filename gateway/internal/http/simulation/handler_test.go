@@ -12,8 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	intgovernor "github.com/go-mirofish/go-mirofish/gateway/internal/governor"
 	intsimulation "github.com/go-mirofish/go-mirofish/gateway/internal/simulation"
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
+	sovereignstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/sovereign"
 )
 
 func TestHandleRouteReadAndAdminSurface(t *testing.T) {
@@ -31,6 +33,9 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	}{
 		{"state", http.MethodGet, "/api/simulation/sim-1", "", http.StatusOK, `"simulation_id":"sim-1"`},
 		{"run status", http.MethodGet, "/api/simulation/sim-1/status", "", http.StatusOK, `"runner_status":"running"`},
+		{"sovereign status", http.MethodGet, "/api/simulation/sim-1/sovereign-status", "", http.StatusOK, `"status":"running"`},
+		{"sovereign truth list", http.MethodGet, "/api/simulation/sim-1/sovereign-truth", "", http.StatusOK, `"claims":[]`},
+		{"sovereign memory list", http.MethodGet, "/api/simulation/sim-1/sovereign-memory", "", http.StatusOK, `"summaries":[]`},
 		{"run status detail", http.MethodGet, "/api/simulation/sim-1/run-status/detail", "", http.StatusOK, `"all_actions":[`},
 		{"profiles", http.MethodGet, "/api/simulation/sim-1/profiles?platform=reddit", "", http.StatusOK, `"count":1`},
 		{"config realtime", http.MethodGet, "/api/simulation/sim-1/config/realtime", "", http.StatusOK, `"config_generated":true`},
@@ -90,8 +95,59 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	if !strings.HasPrefix(createdID, "sim_") {
 		t.Fatalf("simulation_id = %q, want sim_*", createdID)
 	}
+	if createData["status"] != "created" {
+		t.Fatalf("expected created simulation status, got %#v", createData["status"])
+	}
 	if _, err := os.Stat(filepath.Join(root, "simulations", createdID, "control_state.json")); err != nil {
 		t.Fatalf("expected created control_state.json: %v", err)
+	}
+	createdTickReq := httptest.NewRequest(http.MethodPost, "/api/simulation/"+createdID+"/sovereign-tick", nil)
+	createdTickRec := httptest.NewRecorder()
+	handler.HandleRoute(createdTickRec, createdTickReq)
+	if createdTickRec.Code != http.StatusOK {
+		t.Fatalf("created sovereign tick status = %d, want 200", createdTickRec.Code)
+	}
+	stateAfterTickReq := httptest.NewRequest(http.MethodGet, "/api/simulation/"+createdID, nil)
+	stateAfterTickRec := httptest.NewRecorder()
+	handler.HandleRoute(stateAfterTickRec, stateAfterTickReq)
+	if stateAfterTickRec.Code != http.StatusOK {
+		t.Fatalf("state after tick status = %d, want 200", stateAfterTickRec.Code)
+	}
+	if !strings.Contains(stateAfterTickRec.Body.String(), `"status":"running"`) {
+		t.Fatalf("expected state after tick to promote status=running, got %q", stateAfterTickRec.Body.String())
+	}
+	if !strings.Contains(stateAfterTickRec.Body.String(), `"current_round":1`) {
+		t.Fatalf("expected state after tick to show current_round=1, got %q", stateAfterTickRec.Body.String())
+	}
+	createdStatusReq := httptest.NewRequest(http.MethodGet, "/api/simulation/"+createdID+"/status", nil)
+	createdStatusRec := httptest.NewRecorder()
+	handler.HandleRoute(createdStatusRec, createdStatusReq)
+	if createdStatusRec.Code != http.StatusOK {
+		t.Fatalf("created sovereign status status = %d, want 200", createdStatusRec.Code)
+	}
+	if !strings.Contains(createdStatusRec.Body.String(), `"runner_status":"running"`) {
+		t.Fatalf("expected created sovereign status to show runner_status=running, got %q", createdStatusRec.Body.String())
+	}
+	if !strings.Contains(createdStatusRec.Body.String(), `"current_round":1`) {
+		t.Fatalf("expected created sovereign status to show current_round=1, got %q", createdStatusRec.Body.String())
+	}
+	createdProfilesReq := httptest.NewRequest(http.MethodGet, "/api/simulation/"+createdID+"/profiles?platform=reddit", nil)
+	createdProfilesRec := httptest.NewRecorder()
+	handler.HandleRoute(createdProfilesRec, createdProfilesReq)
+	if createdProfilesRec.Code != http.StatusOK {
+		t.Fatalf("created profiles status = %d, want 200", createdProfilesRec.Code)
+	}
+	if !strings.Contains(createdProfilesRec.Body.String(), `"status":"running"`) {
+		t.Fatalf("expected created profiles to expose status=running, got %q", createdProfilesRec.Body.String())
+	}
+	createdConfigRealtimeReq := httptest.NewRequest(http.MethodGet, "/api/simulation/"+createdID+"/config/realtime", nil)
+	createdConfigRealtimeRec := httptest.NewRecorder()
+	handler.HandleRoute(createdConfigRealtimeRec, createdConfigRealtimeReq)
+	if createdConfigRealtimeRec.Code != http.StatusOK {
+		t.Fatalf("created config realtime status = %d, want 200", createdConfigRealtimeRec.Code)
+	}
+	if !strings.Contains(createdConfigRealtimeRec.Body.String(), `"status":"running"`) {
+		t.Fatalf("expected created config realtime to expose status=running, got %q", createdConfigRealtimeRec.Body.String())
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodPost, "/api/simulation/delete", strings.NewReader(`{"simulation_id":"sim-delete"}`))
@@ -103,6 +159,126 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "simulations", "sim-delete")); !os.IsNotExist(err) {
 		t.Fatalf("expected sim-delete removed, stat err = %v", err)
+	}
+
+	listAfterTickReq := httptest.NewRequest(http.MethodGet, "/api/simulation/list?project_id=proj-1", nil)
+	listAfterTickRec := httptest.NewRecorder()
+	handler.HandleRoute(listAfterTickRec, listAfterTickReq)
+	if listAfterTickRec.Code != http.StatusOK {
+		t.Fatalf("list after tick status = %d, want 200", listAfterTickRec.Code)
+	}
+	if !strings.Contains(listAfterTickRec.Body.String(), `"status":"running"`) {
+		t.Fatalf("expected list after tick to promote status=running, got %q", listAfterTickRec.Body.String())
+	}
+	if !strings.Contains(listAfterTickRec.Body.String(), `"current_round":1`) {
+		t.Fatalf("expected list after tick to show current_round=1, got %q", listAfterTickRec.Body.String())
+	}
+	historyAfterTickReq := httptest.NewRequest(http.MethodGet, "/api/simulation/history?limit=20", nil)
+	historyAfterTickRec := httptest.NewRecorder()
+	handler.HandleRoute(historyAfterTickRec, historyAfterTickReq)
+	if historyAfterTickRec.Code != http.StatusOK {
+		t.Fatalf("history after tick status = %d, want 200", historyAfterTickRec.Code)
+	}
+	if !strings.Contains(historyAfterTickRec.Body.String(), `"status":"running"`) {
+		t.Fatalf("expected history after tick to promote status=running, got %q", historyAfterTickRec.Body.String())
+	}
+	if !strings.Contains(historyAfterTickRec.Body.String(), `"current_round":1`) {
+		t.Fatalf("expected history after tick to show current_round=1, got %q", historyAfterTickRec.Body.String())
+	}
+
+	tickReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-tick", nil)
+	tickRec := httptest.NewRecorder()
+	handler.HandleRoute(tickRec, tickReq)
+	if tickRec.Code != http.StatusBadRequest {
+		t.Fatalf("sovereign tick status = %d, want 400", tickRec.Code)
+	}
+	if !strings.Contains(tickRec.Body.String(), `native runner is active`) {
+		t.Fatalf("expected native-runner-active error, got %q", tickRec.Body.String())
+	}
+
+	truthReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-truth", strings.NewReader(`{"claim_id":"claim-1","source":"agent:alice","claim_text":"A new narrative formed","truth_status":"observed","confidence":55}`))
+	truthReq.Header.Set("Content-Type", "application/json")
+	truthRec := httptest.NewRecorder()
+	handler.HandleRoute(truthRec, truthReq)
+	if truthRec.Code != http.StatusOK {
+		t.Fatalf("sovereign truth status = %d, want 200", truthRec.Code)
+	}
+	if !strings.Contains(truthRec.Body.String(), `"claim_id":"claim-1"`) {
+		t.Fatalf("expected truth response to include claim, got %q", truthRec.Body.String())
+	}
+
+	truthListReq := httptest.NewRequest(http.MethodGet, "/api/simulation/sim-1/sovereign-truth", nil)
+	truthListRec := httptest.NewRecorder()
+	handler.HandleRoute(truthListRec, truthListReq)
+	if truthListRec.Code != http.StatusOK {
+		t.Fatalf("sovereign truth list status = %d, want 200", truthListRec.Code)
+	}
+	if !strings.Contains(truthListRec.Body.String(), `"claim_id":"claim-1"`) {
+		t.Fatalf("expected truth list to include claim, got %q", truthListRec.Body.String())
+	}
+
+	compactReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-compact", nil)
+	compactRec := httptest.NewRecorder()
+	handler.HandleRoute(compactRec, compactReq)
+	if compactRec.Code != http.StatusOK {
+		t.Fatalf("sovereign compact status = %d, want 200", compactRec.Code)
+	}
+	if !strings.Contains(compactRec.Body.String(), `"summary_id":"summary-1"`) {
+		t.Fatalf("expected compact response to include summary, got %q", compactRec.Body.String())
+	}
+
+	memoryListReq := httptest.NewRequest(http.MethodGet, "/api/simulation/sim-1/sovereign-memory", nil)
+	memoryListRec := httptest.NewRecorder()
+	handler.HandleRoute(memoryListRec, memoryListReq)
+	if memoryListRec.Code != http.StatusOK {
+		t.Fatalf("sovereign memory list status = %d, want 200", memoryListRec.Code)
+	}
+	if !strings.Contains(memoryListRec.Body.String(), `"summary_id":"summary-1"`) {
+		t.Fatalf("expected memory list to include summary, got %q", memoryListRec.Body.String())
+	}
+}
+
+func TestSovereignRoutesReturnNotFoundWithoutRuntime(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	store := simulationstore.New(
+		filepath.Join(root, "simulations"),
+		filepath.Join(root, "scripts"),
+		filepath.Join(root, "projects"),
+		filepath.Join(root, "reports"),
+	)
+	governor := intgovernor.NewService(sovereignstore.New(filepath.Join(root, "simulations", "sovereign.db")), intgovernor.DefaultProfile)
+	service := intsimulation.NewServiceWithGovernor(store, nil, governor)
+	handler := NewHandler(service, store, graphServiceStub{})
+
+	tests := []struct {
+		name   string
+		method string
+		target string
+		body   string
+	}{
+		{"status", http.MethodGet, "/api/simulation/missing/sovereign-status", ""},
+		{"tick", http.MethodPost, "/api/simulation/missing/sovereign-tick", ""},
+		{"truth get", http.MethodGet, "/api/simulation/missing/sovereign-truth", ""},
+		{"truth post", http.MethodPost, "/api/simulation/missing/sovereign-truth", `{"claim_id":"claim-1","source":"agent:x","claim_text":"x","truth_status":"observed"}`},
+		{"memory", http.MethodGet, "/api/simulation/missing/sovereign-memory", ""},
+		{"compact", http.MethodPost, "/api/simulation/missing/sovereign-compact", ""},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.target, strings.NewReader(tt.body))
+			if tt.body != "" {
+				req.Header.Set("Content-Type", "application/json")
+			}
+			rec := httptest.NewRecorder()
+			handler.HandleRoute(rec, req)
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want 404 body=%s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 
@@ -195,7 +371,14 @@ func newSimulationHandlerFixture(t *testing.T) (*Handler, string) {
 		filepath.Join(root, "projects"),
 		filepath.Join(root, "reports"),
 	)
-	service := intsimulation.NewService(store, nil)
+	governor := intgovernor.NewService(sovereignstore.New(filepath.Join(root, "simulations", "sovereign.db")), intgovernor.DefaultProfile)
+	if _, err := governor.InitializeSimulation(context.Background(), "sim-1"); err != nil {
+		t.Fatalf("InitializeSimulation sovereign sim-1: %v", err)
+	}
+	if _, err := governor.InitializeSimulation(context.Background(), "sim-delete"); err != nil {
+		t.Fatalf("InitializeSimulation sovereign sim-delete: %v", err)
+	}
+	service := intsimulation.NewServiceWithGovernor(store, nil, governor)
 	return NewHandler(service, store, graphServiceStub{data: map[string]any{
 		"graph_id": "graph-1",
 		"nodes": []map[string]any{

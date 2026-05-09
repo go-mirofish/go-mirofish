@@ -179,6 +179,45 @@ func main() {
 
 For existing Go services that want to mount go-mirofish under their own mux, use `headless.New(...)` and reuse `app.Handler()`.
 
+## Sovereign core (experimental foundation)
+
+The first Governor + SQLite sovereign-core slice is now available behind an opt-in flag.
+
+Enable it in `.env`:
+
+```bash
+SOVEREIGN_ENABLED=true
+SOVEREIGN_PROFILE=workstation
+```
+
+Optional explicit DB path:
+
+```bash
+SOVEREIGN_SQLITE_PATH=./data/simulations/sovereign.db
+```
+
+What it currently does:
+
+- initializes sovereign runtime state when a simulation is created
+- stores sovereign runtime metadata in SQLite
+- exposes:
+  - `GET /api/simulation/:id/sovereign-status`
+  - `POST /api/simulation/:id/sovereign-tick`
+  - `GET|POST /api/simulation/:id/sovereign-truth`
+  - `GET /api/simulation/:id/sovereign-memory`
+  - `POST /api/simulation/:id/sovereign-compact`
+- includes profile metadata for:
+  - `workstation`
+  - `constrained_local`
+  - `arm64_edge`
+
+What it does not do yet:
+
+- full truth scoring or audit/oracle behavior
+- real memory-tier summarization beyond the first compaction shell
+- edge-specific scheduler enforcement beyond profile metadata
+- full authority unification across all simulation artifacts
+
 ## 🌐 Live Demo
 
 - Static playground (zero-cost replay): [go-mirofish.vercel.app](https://go-mirofish.vercel.app)

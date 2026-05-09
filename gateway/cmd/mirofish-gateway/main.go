@@ -19,6 +19,7 @@ import (
 
 	"strconv"
 
+	intgovernor "github.com/go-mirofish/go-mirofish/gateway/internal/governor"
 	intgraph "github.com/go-mirofish/go-mirofish/gateway/internal/graph"
 	apphttp "github.com/go-mirofish/go-mirofish/gateway/internal/http/app"
 	graphhttp "github.com/go-mirofish/go-mirofish/gateway/internal/http/graph"
@@ -34,6 +35,7 @@ import (
 	localfs "github.com/go-mirofish/go-mirofish/gateway/internal/store/localfs"
 	reportstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/report"
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
+	sovereignstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/sovereign"
 	"github.com/go-mirofish/go-mirofish/gateway/internal/telemetry"
 	intworker "github.com/go-mirofish/go-mirofish/gateway/internal/worker"
 )
@@ -295,8 +297,21 @@ func buildOntologyHandler(cfg config, registry *intprovider.Registry) *ontologyh
 func buildSimulationHandler(cfg config) *simulationhttp.Handler {
 	store := simulationstore.New(cfg.simulationsDir, cfg.scriptsDir, cfg.projectsDir, cfg.reportsDir)
 	bridge := intworker.NewNativeBridge(cfg.simulationsDir)
-	service := intsimulation.NewService(store, bridge)
+	governor := buildGovernorService(cfg.simulationsDir)
+	service := intsimulation.NewServiceWithGovernor(store, bridge, governor)
 	return simulationhttp.NewHandler(service, store, buildGraphService(cfg))
+}
+
+func buildGovernorService(simulationsDir string) *intgovernor.Service {
+	if strings.ToLower(strings.TrimSpace(os.Getenv("SOVEREIGN_ENABLED"))) != "true" {
+		return nil
+	}
+	profile := envOrDefault("SOVEREIGN_PROFILE", intgovernor.DefaultProfile)
+	dbPath := strings.TrimSpace(os.Getenv("SOVEREIGN_SQLITE_PATH"))
+	if dbPath == "" {
+		dbPath = filepath.Join(simulationsDir, "sovereign.db")
+	}
+	return intgovernor.NewService(sovereignstore.New(dbPath), profile)
 }
 
 func buildPrepareHandler(cfg config, registry *intprovider.Registry) *preparehttp.Handler {
@@ -392,6 +407,24 @@ func readinessChecker(cfg config) apphttp.ReadinessFunc {
 				return checks, err
 			}
 			checks[dir] = "writable"
+		}
+		if strings.ToLower(strings.TrimSpace(os.Getenv("SOVEREIGN_ENABLED"))) == "true" {
+			dbPath := strings.TrimSpace(os.Getenv("SOVEREIGN_SQLITE_PATH"))
+			if dbPath == "" {
+				dbPath = filepath.Join(cfg.simulationsDir, "sovereign.db")
+			}
+			parent := filepath.Dir(dbPath)
+			if err := os.MkdirAll(parent, 0o755); err != nil {
+				checks["sovereign_sqlite"] = err.Error()
+				return checks, err
+			}
+			if err := validateWritableDir(parent); err != nil {
+				checks["sovereign_sqlite"] = err.Error()
+				return checks, err
+			}
+			checks["sovereign_enabled"] = true
+			checks["sovereign_profile"] = envOrDefault("SOVEREIGN_PROFILE", intgovernor.DefaultProfile)
+			checks["sovereign_sqlite"] = dbPath
 		}
 		if cfg.frontendDevURL != nil {
 			checks["frontend"] = cfg.frontendDevURL.String()

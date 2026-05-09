@@ -245,6 +245,40 @@ The trust package now supports signing as well as verification:
 
 This removes the need for each embedding application to hand-roll digest and signature generation.
 
+## Sovereign foundation
+
+The first sovereign-core slice is opt-in and currently targets the Go gateway / Headless SDK runtime with a SQLite-backed Governor state shell.
+
+Environment flags:
+
+```bash
+SOVEREIGN_ENABLED=true
+SOVEREIGN_PROFILE=workstation
+SOVEREIGN_SQLITE_PATH=./data/simulations/sovereign.db
+```
+
+Current behavior:
+
+- simulation creation initializes sovereign runtime state
+- sovereign runtime state is stored in SQLite
+- the runtime exposes:
+  - `GET /api/simulation/:id/sovereign-status`
+  - `POST /api/simulation/:id/sovereign-tick`
+  - `GET|POST /api/simulation/:id/sovereign-truth`
+  - `GET /api/simulation/:id/sovereign-memory`
+  - `POST /api/simulation/:id/sovereign-compact`
+- profile metadata currently supports:
+  - `workstation`
+  - `constrained_local`
+  - `arm64_edge`
+
+Current non-goals:
+
+- full truth scoring and audit behavior
+- long-horizon memory summarization beyond the first compaction shell
+- profile-enforced edge scheduling
+- full replacement of existing JSON artifact read models
+
 ## Integration promise
 
 The SDK goal is:
