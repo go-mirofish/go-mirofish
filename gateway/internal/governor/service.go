@@ -53,8 +53,6 @@ type ClaimInput struct {
 	ClaimText    string
 	EvidenceRefs []string
 	ValidFrom    string
-	ValidTo      string
-	DecayAt      string
 	UpdatedBy    string
 }
 
@@ -152,6 +150,11 @@ func (s *Service) RecordClaim(ctx context.Context, simulationID string, input Cl
 	if !s.Enabled() {
 		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
 	}
+	if input.ValidFrom != "" {
+		if _, err := time.Parse(time.RFC3339, input.ValidFrom); err != nil {
+			return sovereignstore.ClaimRecord{}, fmt.Errorf("valid_from must be RFC3339")
+		}
+	}
 	record := sovereignstore.ClaimRecord{
 		SimulationID: simulationID,
 		ClaimID:      input.ClaimID,
@@ -162,8 +165,6 @@ func (s *Service) RecordClaim(ctx context.Context, simulationID string, input Cl
 		ClaimText:    input.ClaimText,
 		EvidenceRefs: append([]string(nil), input.EvidenceRefs...),
 		ValidFrom:    input.ValidFrom,
-		ValidTo:      input.ValidTo,
-		DecayAt:      input.DecayAt,
 		UpdatedBy:    input.UpdatedBy,
 		Version:      1,
 		UpdatedAt:    s.now().Format(time.RFC3339),
@@ -191,6 +192,20 @@ func (s *Service) UpdateClaimConfidence(ctx context.Context, simulationID, claim
 	return s.store.UpsertTruthClaim(ctx, record)
 }
 
+func (s *Service) ScheduleClaimDecay(ctx context.Context, simulationID, claimID string, decayAt time.Time) (sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
+	}
+	record, err := s.store.GetTruthClaim(ctx, simulationID, claimID)
+	if err != nil {
+		return sovereignstore.ClaimRecord{}, err
+	}
+	record.DecayAt = decayAt.Format(time.RFC3339)
+	record.Version++
+	record.UpdatedAt = s.now().Format(time.RFC3339)
+	return s.store.UpsertTruthClaim(ctx, record)
+}
+
 func (s *Service) ClassifyClaim(ctx context.Context, record sovereignstore.ClaimRecord) (sovereignstore.ClaimRecord, error) {
 	if !s.Enabled() {
 		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
@@ -200,6 +215,7 @@ func (s *Service) ClassifyClaim(ctx context.Context, record sovereignstore.Claim
 }
 
 func (s *Service) classifyClaimRecord(record sovereignstore.ClaimRecord) sovereignstore.ClaimRecord {
+	now := s.now()
 	if record.ClaimType == "" {
 		record.ClaimType = "statement"
 	}
@@ -218,12 +234,15 @@ func (s *Service) classifyClaimRecord(record sovereignstore.ClaimRecord) soverei
 		record.Confidence = 40
 	}
 	if record.ValidFrom == "" {
-		record.ValidFrom = s.now().Format(time.RFC3339)
+		record.ValidFrom = now.Format(time.RFC3339)
 	}
 	if record.Version == 0 {
 		record.Version = 1
 	}
-	record.UpdatedAt = s.now().Format(time.RFC3339)
+	if record.DecayAt == "" {
+		record.DecayAt = defaultDecayAt(record.TruthStatus, now)
+	}
+	record.UpdatedAt = now.Format(time.RFC3339)
 	return record
 }
 
@@ -257,6 +276,20 @@ func (s *Service) ListTruthClaims(ctx context.Context, simulationID string) ([]s
 }
 
 func (s *Service) ObserveTruthClaims(ctx context.Context, simulationID string, now time.Time) ([]sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return nil, errors.New("governor is not enabled")
+	}
+	if _, err := s.DecayClaims(ctx, simulationID, now); err != nil {
+		return nil, err
+	}
+	claims, err := s.store.ListTruthClaims(ctx, simulationID)
+	if err != nil {
+		return nil, err
+	}
+	return claims, nil
+}
+
+func (s *Service) ProjectTruthClaims(ctx context.Context, simulationID string, now time.Time) ([]sovereignstore.ClaimRecord, error) {
 	if !s.Enabled() {
 		return nil, errors.New("governor is not enabled")
 	}
@@ -345,13 +378,6 @@ func (s *Service) projectClaimDecay(item sovereignstore.ClaimRecord, now time.Ti
 	}
 	switch item.TruthStatus {
 	case StatusGrounded:
-		if projected && now.Sub(decayAt) >= time.Second {
-			item.TruthStatus = StatusInvalidated
-			item.Confidence = 0
-			item.ValidTo = now.Format(time.RFC3339)
-			item.DecayAt = ""
-			return item
-		}
 		item.TruthStatus = StatusContested
 		if item.Confidence > 50 {
 			item.Confidence = 50
@@ -373,4 +399,15 @@ func hasConflictingEvidence(evidenceRefs []string) bool {
 		}
 	}
 	return false
+}
+
+func defaultDecayAt(status string, now time.Time) string {
+	switch status {
+	case StatusGrounded:
+		return now.Add(2 * time.Second).Format(time.RFC3339)
+	case StatusSpeculative, StatusContested, StatusObserved:
+		return now.Add(1 * time.Second).Format(time.RFC3339)
+	default:
+		return ""
+	}
 }

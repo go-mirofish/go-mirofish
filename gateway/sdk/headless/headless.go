@@ -106,6 +106,7 @@ type reportLookup struct {
 }
 
 type reportTruthLookup struct {
+	path     string
 	governor *intgovernor.Service
 }
 
@@ -731,7 +732,13 @@ func (r reportTruthLookup) ListTruthClaims(ctx context.Context, simulationID str
 	if r.governor == nil {
 		return nil, nil
 	}
-	claims, err := r.governor.ObserveTruthClaims(ctx, simulationID, time.Now().UTC())
+	if _, err := os.Stat(r.path); err != nil {
+		if os.IsNotExist(err) {
+			return []sovereignstore.ClaimRecord{}, nil
+		}
+		return nil, err
+	}
+	claims, err := r.governor.ProjectTruthClaims(ctx, simulationID, time.Now().UTC())
 	if err == sovereignstore.ErrSimulationRuntimeNotFound {
 		return []sovereignstore.ClaimRecord{}, nil
 	}
@@ -805,10 +812,11 @@ func buildReportHandler(cfg Config, registry *intprovider.Registry) *reporthttp.
 }
 
 func buildReportTruthLookup(simulationsDir string) intreport.TruthLookup {
-	if strings.ToLower(strings.TrimSpace(os.Getenv("SOVEREIGN_ENABLED"))) != "true" {
-		return nil
+	dbPath := defaultSovereignDBPath(simulationsDir)
+	return reportTruthLookup{
+		path:     dbPath,
+		governor: intgovernor.NewService(sovereignstore.New(dbPath), envOrDefault("SOVEREIGN_PROFILE", intgovernor.DefaultProfile)),
 	}
-	return reportTruthLookup{governor: intgovernor.NewService(sovereignstore.New(defaultSovereignDBPath(simulationsDir)), envOrDefault("SOVEREIGN_PROFILE", intgovernor.DefaultProfile))}
 }
 
 func buildGraphHandler(cfg Config) *graphhttp.Handler {

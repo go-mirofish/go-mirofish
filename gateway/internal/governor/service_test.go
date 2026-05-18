@@ -115,13 +115,15 @@ func TestRecordClassifyAndDecayClaims(t *testing.T) {
 	if grounded.TruthStatus != StatusGrounded || grounded.Confidence != 80 {
 		t.Fatalf("unexpected grounded claim: %#v", grounded)
 	}
+	if grounded.DecayAt == "" {
+		t.Fatalf("expected default decay schedule on grounded claim, got %#v", grounded)
+	}
 
 	contested, err := service.RecordClaim(ctx, "sim-claims", ClaimInput{
 		ClaimID:      "claim-contested",
 		Source:       "agent:bob",
 		ClaimText:    "Conflicting claim",
 		EvidenceRefs: []string{"conflict:doc:2"},
-		DecayAt:      now.Add(-time.Minute).Format(time.RFC3339),
 	})
 	if err != nil {
 		t.Fatalf("RecordClaim contested: %v", err)
@@ -134,7 +136,6 @@ func TestRecordClassifyAndDecayClaims(t *testing.T) {
 		ClaimID:   "claim-speculative",
 		Source:    "agent:carol",
 		ClaimText: "Ungrounded claim",
-		DecayAt:   now.Add(-time.Minute).Format(time.RFC3339),
 	})
 	if err != nil {
 		t.Fatalf("RecordClaim speculative: %v", err)
@@ -148,13 +149,21 @@ func TestRecordClassifyAndDecayClaims(t *testing.T) {
 		Source:       "agent:dana",
 		ClaimText:    "Grounded long ago",
 		EvidenceRefs: []string{"doc:2"},
-		DecayAt:      now.Add(-2 * time.Second).Format(time.RFC3339),
 	})
 	if err != nil {
 		t.Fatalf("RecordClaim grounded late: %v", err)
 	}
 	if groundedLate.TruthStatus != StatusGrounded {
 		t.Fatalf("unexpected grounded late status: %#v", groundedLate)
+	}
+	if _, err := service.ScheduleClaimDecay(ctx, "sim-claims", "claim-contested", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("ScheduleClaimDecay contested: %v", err)
+	}
+	if _, err := service.ScheduleClaimDecay(ctx, "sim-claims", "claim-speculative", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("ScheduleClaimDecay speculative: %v", err)
+	}
+	if _, err := service.ScheduleClaimDecay(ctx, "sim-claims", "claim-grounded-late", now.Add(-2*time.Second)); err != nil {
+		t.Fatalf("ScheduleClaimDecay grounded late: %v", err)
 	}
 	if _, err := service.RecordClaim(ctx, "sim-claims", ClaimInput{
 		ClaimID:   "claim-speculative",
@@ -193,7 +202,7 @@ func TestRecordClassifyAndDecayClaims(t *testing.T) {
 	if updated.Confidence != 65 {
 		t.Fatalf("expected confidence 65, got %#v", updated.Confidence)
 	}
-	if updated.Version != 2 {
-		t.Fatalf("expected version 2, got %#v", updated.Version)
+	if updated.Version != 3 {
+		t.Fatalf("expected version 3, got %#v", updated.Version)
 	}
 }

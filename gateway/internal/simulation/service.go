@@ -556,26 +556,20 @@ func (s *Service) RecordSovereignTruth(ctx context.Context, simulationID string,
 	if s.governor == nil || !s.governor.Enabled() {
 		return nil, nil
 	}
-	if strings.TrimSpace(stringValue(payload["truth_status"])) != "" {
-		return nil, errors.New("truth_status is Governor-owned and may not be set by the caller")
-	}
-	if payload["confidence"] != nil {
-		return nil, errors.New("confidence is Governor-owned and may not be set by the caller")
-	}
-	if strings.TrimSpace(stringValue(payload["decay_at"])) != "" {
-		return nil, errors.New("decay_at is Governor-owned and may not be set by the caller")
-	}
-	if strings.TrimSpace(stringValue(payload["valid_to"])) != "" {
-		return nil, errors.New("valid_to is Governor-owned and may not be set by the caller")
-	}
-	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true); err != nil {
-		return nil, err
-	}
 	if _, exists := payload["truth_status"]; exists {
 		return nil, errors.New("truth_status is Governor-owned and may not be set by the caller")
 	}
 	if _, exists := payload["confidence"]; exists {
 		return nil, errors.New("confidence is Governor-owned and may not be set by the caller")
+	}
+	if _, exists := payload["decay_at"]; exists {
+		return nil, errors.New("decay_at is Governor-owned and may not be set by the caller")
+	}
+	if _, exists := payload["valid_to"]; exists {
+		return nil, errors.New("valid_to is Governor-owned and may not be set by the caller")
+	}
+	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true); err != nil {
+		return nil, err
 	}
 	claim, err := s.governor.RecordClaim(ctx, strings.TrimSpace(simulationID), intgovernor.ClaimInput{
 		ClaimID:      stringValue(payload["claim_id"]),
@@ -586,8 +580,6 @@ func (s *Service) RecordSovereignTruth(ctx context.Context, simulationID string,
 		ClaimText:    stringValue(payload["claim_text"]),
 		EvidenceRefs: stringSliceValue(payload["evidence_refs"]),
 		ValidFrom:    stringValue(payload["valid_from"]),
-		ValidTo:      stringValue(payload["valid_to"]),
-		DecayAt:      stringValue(payload["decay_at"]),
 		UpdatedBy:    stringValue(payload["updated_by"]),
 	})
 	if err != nil {
@@ -656,9 +648,6 @@ func (s *Service) CompactSovereignMemory(ctx context.Context, simulationID strin
 	}
 	summary, err := s.governor.Compact(ctx, strings.TrimSpace(simulationID))
 	if err != nil {
-		return nil, err
-	}
-	if _, err := s.governor.DecayClaims(ctx, strings.TrimSpace(simulationID), s.now()); err != nil {
 		return nil, err
 	}
 	return map[string]any{

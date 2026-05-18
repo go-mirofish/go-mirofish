@@ -367,9 +367,11 @@ func TestAdvanceTickAppliesDecay(t *testing.T) {
 		ClaimID:   "claim-decay",
 		Source:    "agent:alice",
 		ClaimText: "unguarded claim",
-		DecayAt:   now.Add(-time.Minute).Format(time.RFC3339),
 	}); err != nil {
 		t.Fatalf("RecordClaim: %v", err)
+	}
+	if _, err := governor.ScheduleClaimDecay(context.Background(), simulationID, "claim-decay", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("ScheduleClaimDecay: %v", err)
 	}
 	if _, err := service.AdvanceSovereignTick(context.Background(), simulationID); err != nil {
 		t.Fatalf("AdvanceSovereignTick: %v", err)
@@ -457,9 +459,11 @@ func TestCompactDoesNotApplySecondDecayStep(t *testing.T) {
 		Source:       "agent:alice",
 		ClaimText:    "grounded",
 		EvidenceRefs: []string{"doc:1"},
-		DecayAt:      now.Add(-time.Minute).Format(time.RFC3339),
 	}); err != nil {
 		t.Fatalf("RecordClaim: %v", err)
+	}
+	if _, err := governor.ScheduleClaimDecay(context.Background(), simulationID, "claim-grounded", now.Add(-time.Minute)); err != nil {
+		t.Fatalf("ScheduleClaimDecay: %v", err)
 	}
 	if _, err := service.AdvanceSovereignTick(context.Background(), simulationID); err != nil {
 		t.Fatalf("AdvanceSovereignTick: %v", err)

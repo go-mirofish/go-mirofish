@@ -261,7 +261,12 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 		"summary":  outline.Summary,
 		"sections": outline.Sections,
 	}
-	meta.TruthProjection = s.truthProjection(ctx, simulationID)
+	projection, err := s.truthProjection(ctx, simulationID)
+	if err != nil {
+		s.fail(reportID, err)
+		return
+	}
+	meta.TruthProjection = projection
 	if err := s.store.SaveMeta(reportID, meta); err != nil {
 		s.fail(reportID, err)
 		return
@@ -528,14 +533,14 @@ func reportMetaToMap(meta reportstore.ReportMeta) map[string]any {
 	}
 }
 
-func (s *Service) truthProjection(ctx context.Context, simulationID string) map[string]any {
+func (s *Service) truthProjection(ctx context.Context, simulationID string) (map[string]any, error) {
 	if s.truth == nil {
 		return map[string]any{
 			"grounded_findings":    []map[string]any{},
 			"speculative_findings": []map[string]any{},
 			"contested_findings":   []map[string]any{},
 			"invalidated_findings": []map[string]any{},
-		}
+		}, nil
 	}
 	claims, err := s.truth.ListTruthClaims(ctx, simulationID)
 	if err != nil {
@@ -544,8 +549,7 @@ func (s *Service) truthProjection(ctx context.Context, simulationID string) map[
 			"speculative_findings": []map[string]any{},
 			"contested_findings":   []map[string]any{},
 			"invalidated_findings": []map[string]any{},
-			"error":                err.Error(),
-		}
+		}, err
 	}
 	projection := map[string]any{
 		"grounded_findings":    []map[string]any{},
@@ -577,7 +581,7 @@ func (s *Service) truthProjection(ctx context.Context, simulationID string) map[
 			projection["speculative_findings"] = append(projection["speculative_findings"].([]map[string]any), entry)
 		}
 	}
-	return projection
+	return projection, nil
 }
 
 func publicTruthStatus(status string) string {

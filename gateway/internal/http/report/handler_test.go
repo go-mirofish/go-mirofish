@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	intgovernor "github.com/go-mirofish/go-mirofish/gateway/internal/governor"
 	"github.com/go-mirofish/go-mirofish/gateway/internal/memory"
 	intprovider "github.com/go-mirofish/go-mirofish/gateway/internal/provider"
 	intreport "github.com/go-mirofish/go-mirofish/gateway/internal/report"
@@ -36,6 +37,15 @@ func (t truthLookupStub) ListTruthClaims(ctx context.Context, simulationID strin
 		return nil, t.err
 	}
 	return t.claims, nil
+}
+
+type governorTruthLookup struct {
+	governor *intgovernor.Service
+	now      time.Time
+}
+
+func (g governorTruthLookup) ListTruthClaims(ctx context.Context, simulationID string) ([]sovereignstore.ClaimRecord, error) {
+	return g.governor.ProjectTruthClaims(ctx, simulationID, g.now)
 }
 
 func (l lookupStub) ReadSimulation(simulationID string) (map[string]any, error) {
@@ -298,6 +308,47 @@ func TestLegacyReportStillReturnsTruthProjectionObject(t *testing.T) {
 	}
 }
 
+func TestReportTruthProjectionDoesNotMutateClaims(t *testing.T) {
+	reportsDir := filepath.Join(t.TempDir(), "reports")
+	store := reportstore.NewFileStore(reportsDir)
+	sovereign := sovereignstore.New(filepath.Join(t.TempDir(), "sovereign.db"))
+	governor := intgovernor.NewService(sovereign, intgovernor.DefaultProfile)
+	ctx := context.Background()
+	if _, err := governor.InitializeSimulation(ctx, "sim-1"); err != nil {
+		t.Fatalf("InitializeSimulation: %v", err)
+	}
+	claim, err := governor.RecordClaim(ctx, "sim-1", intgovernor.ClaimInput{
+		ClaimID:      "claim-1",
+		Source:       "agent:alice",
+		ClaimText:    "Grounded claim",
+		EvidenceRefs: []string{"doc:1"},
+	})
+	if err != nil {
+		t.Fatalf("RecordClaim: %v", err)
+	}
+	if _, err := governor.ScheduleClaimDecay(ctx, "sim-1", "claim-1", time.Now().UTC().Add(-2*time.Second)); err != nil {
+		t.Fatalf("ScheduleClaimDecay: %v", err)
+	}
+
+	handler := newHandlerForTest(t, store, memoryStub{resp: memory.SearchResponse{Facts: []string{"fact-a"}}}, nil, governorTruthLookup{
+		governor: governor,
+		now:      time.Now().UTC(),
+	})
+	reportID := startGeneration(t, handler, `{"simulation_id":"sim-1"}`)
+	waitForStatus(t, handler, reportID, "completed")
+
+	after, err := sovereign.GetTruthClaim(ctx, "sim-1", "claim-1")
+	if err != nil {
+		t.Fatalf("GetTruthClaim: %v", err)
+	}
+	if after.Version != claim.Version+1 { // scheduled decay increment only
+		t.Fatalf("expected no report-side mutation, got version %#v", after.Version)
+	}
+	if after.TruthStatus != intgovernor.StatusGrounded {
+		t.Fatalf("expected persisted truth to remain grounded, got %#v", after.TruthStatus)
+	}
+}
+
 func TestHandleGenerateBadRequest(t *testing.T) {
 	store := reportstore.NewFileStore(filepath.Join(t.TempDir(), "reports"))
 	handler := newHandlerForTest(t, store, memoryStub{}, nil)
@@ -374,11 +425,21 @@ func TestHandleGenerateRunFailuresSurfaceFailedStatus(t *testing.T) {
 			memoryClient: memoryStub{resp: memory.SearchResponse{Facts: []string{"fact"}}},
 			wantMessage:  "save section failed",
 		},
+		{
+			name:         "truth lookup failure",
+			store:        reportstore.NewFileStore(filepath.Join(t.TempDir(), "reports-truth")),
+			memoryClient: memoryStub{resp: memory.SearchResponse{Facts: []string{"fact"}}},
+			wantMessage:  "truth lookup failed",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := newHandlerForTest(t, tt.store, tt.memoryClient, tt.providerExec)
+			var truth intreport.TruthLookup
+			if tt.name == "truth lookup failure" {
+				truth = truthLookupStub{err: errors.New("truth lookup failed")}
+			}
+			handler := newHandlerForTest(t, tt.store, tt.memoryClient, tt.providerExec, truth)
 			reportID := startGeneration(t, handler, `{"simulation_id":"sim-1"}`)
 			status := waitForStatus(t, handler, reportID, "failed")
 			if !strings.Contains(status["message"].(string), tt.wantMessage) {
