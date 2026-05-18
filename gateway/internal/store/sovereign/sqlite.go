@@ -3,6 +3,7 @@ package sovereign
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 )
 
 var ErrSimulationRuntimeNotFound = errors.New("sovereign simulation runtime not found")
+var ErrTruthClaimNotFound = errors.New("sovereign truth claim not found")
 
 type RuntimeState struct {
 	SimulationID string `json:"simulation_id"`
@@ -27,17 +29,26 @@ type RuntimeState struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
-type TruthClaim struct {
-	SimulationID string `json:"simulation_id"`
-	ClaimID      string `json:"claim_id"`
-	Source       string `json:"source"`
-	ClaimText    string `json:"claim_text"`
-	TruthStatus  string `json:"truth_status"`
-	Confidence   int    `json:"confidence"`
-	EvidenceRefs string `json:"evidence_refs,omitempty"`
-	DecayAt      string `json:"decay_at,omitempty"`
-	UpdatedAt    string `json:"updated_at"`
+type ClaimRecord struct {
+	SimulationID string   `json:"simulation_id"`
+	ClaimID      string   `json:"claim_id"`
+	ClaimType    string   `json:"claim_type"`
+	Subject      string   `json:"subject,omitempty"`
+	Source       string   `json:"source"`
+	SourceKind   string   `json:"source_kind"`
+	ClaimText    string   `json:"claim_text"`
+	TruthStatus  string   `json:"truth_status"`
+	Confidence   int      `json:"confidence"`
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+	Version      int      `json:"version"`
+	ValidFrom    string   `json:"valid_from,omitempty"`
+	ValidTo      string   `json:"valid_to,omitempty"`
+	DecayAt      string   `json:"decay_at,omitempty"`
+	UpdatedAt    string   `json:"updated_at"`
+	UpdatedBy    string   `json:"updated_by,omitempty"`
 }
+
+type TruthClaim = ClaimRecord
 
 type MemorySummary struct {
 	SimulationID string `json:"simulation_id"`
@@ -319,53 +330,199 @@ func (s *Store) AdvanceTick(ctx context.Context, simulationID string, now time.T
 	return s.GetSimulationRuntime(ctx, simulationID)
 }
 
-func (s *Store) UpsertTruthClaim(ctx context.Context, claim TruthClaim) (TruthClaim, error) {
+func (s *Store) UpsertTruthClaim(ctx context.Context, claim ClaimRecord) (ClaimRecord, error) {
 	db, err := s.open()
 	if err != nil {
-		return TruthClaim{}, err
+		return ClaimRecord{}, err
 	}
 	if claim.SimulationID == "" || claim.ClaimID == "" {
-		return TruthClaim{}, fmt.Errorf("truth claim requires simulation_id and claim_id")
+		return ClaimRecord{}, fmt.Errorf("truth claim requires simulation_id and claim_id")
 	}
 	if _, err := s.GetSimulationRuntime(ctx, claim.SimulationID); err != nil {
-		return TruthClaim{}, err
+		return ClaimRecord{}, err
+	}
+	if claim.ClaimType == "" {
+		claim.ClaimType = "statement"
+	}
+	if claim.SourceKind == "" {
+		claim.SourceKind = "simulation"
 	}
 	if claim.TruthStatus == "" {
 		claim.TruthStatus = "observed"
 	}
+	if claim.Version == 0 {
+		claim.Version = 1
+	}
+	if claim.ValidFrom == "" {
+		claim.ValidFrom = time.Now().UTC().Format(time.RFC3339)
+	}
 	if claim.UpdatedAt == "" {
 		claim.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	evidenceRefs, err := json.Marshal(claim.EvidenceRefs)
+	if err != nil {
+		return ClaimRecord{}, err
 	}
 	_, err = db.ExecContext(
 		ctx,
 		`INSERT INTO truth_claim
-		 (simulation_id, claim_id, source, claim_text, truth_status, confidence, evidence_refs, decay_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 (simulation_id, claim_id, claim_type, subject, source, source_kind, claim_text, truth_status, confidence, evidence_refs, version, valid_from, valid_to, decay_at, updated_at, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT(simulation_id, claim_id) DO UPDATE SET
+		   claim_type = excluded.claim_type,
+		   subject = excluded.subject,
 		   source = excluded.source,
+		   source_kind = excluded.source_kind,
 		   claim_text = excluded.claim_text,
 		   truth_status = excluded.truth_status,
 		   confidence = excluded.confidence,
 		   evidence_refs = excluded.evidence_refs,
+		   version = excluded.version,
+		   valid_from = excluded.valid_from,
+		   valid_to = excluded.valid_to,
 		   decay_at = excluded.decay_at,
-		   updated_at = excluded.updated_at`,
+		   updated_at = excluded.updated_at,
+		   updated_by = excluded.updated_by`,
 		claim.SimulationID,
 		claim.ClaimID,
+		claim.ClaimType,
+		nullableString(claim.Subject),
 		claim.Source,
+		claim.SourceKind,
 		claim.ClaimText,
 		claim.TruthStatus,
 		claim.Confidence,
-		nullableString(claim.EvidenceRefs),
+		string(evidenceRefs),
+		claim.Version,
+		nullableString(claim.ValidFrom),
+		nullableString(claim.ValidTo),
 		nullableString(claim.DecayAt),
 		claim.UpdatedAt,
+		nullableString(claim.UpdatedBy),
 	)
 	if err != nil {
-		return TruthClaim{}, err
+		return ClaimRecord{}, err
 	}
 	return claim, nil
 }
 
-func (s *Store) ListTruthClaims(ctx context.Context, simulationID string) ([]TruthClaim, error) {
+func (s *Store) CreateTruthClaim(ctx context.Context, claim ClaimRecord) (ClaimRecord, error) {
+	db, err := s.open()
+	if err != nil {
+		return ClaimRecord{}, err
+	}
+	if claim.SimulationID == "" || claim.ClaimID == "" {
+		return ClaimRecord{}, fmt.Errorf("truth claim requires simulation_id and claim_id")
+	}
+	if _, err := s.GetSimulationRuntime(ctx, claim.SimulationID); err != nil {
+		return ClaimRecord{}, err
+	}
+	if claim.ClaimType == "" {
+		claim.ClaimType = "statement"
+	}
+	if claim.SourceKind == "" {
+		claim.SourceKind = "simulation"
+	}
+	if claim.TruthStatus == "" {
+		claim.TruthStatus = "observed"
+	}
+	if claim.Version == 0 {
+		claim.Version = 1
+	}
+	if claim.ValidFrom == "" {
+		claim.ValidFrom = time.Now().UTC().Format(time.RFC3339)
+	}
+	if claim.UpdatedAt == "" {
+		claim.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	evidenceRefs, err := json.Marshal(claim.EvidenceRefs)
+	if err != nil {
+		return ClaimRecord{}, err
+	}
+	result, err := db.ExecContext(
+		ctx,
+		`INSERT INTO truth_claim
+		 (simulation_id, claim_id, claim_type, subject, source, source_kind, claim_text, truth_status, confidence, evidence_refs, version, valid_from, valid_to, decay_at, updated_at, updated_by)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		claim.SimulationID,
+		claim.ClaimID,
+		claim.ClaimType,
+		nullableString(claim.Subject),
+		claim.Source,
+		claim.SourceKind,
+		claim.ClaimText,
+		claim.TruthStatus,
+		claim.Confidence,
+		string(evidenceRefs),
+		claim.Version,
+		nullableString(claim.ValidFrom),
+		nullableString(claim.ValidTo),
+		nullableString(claim.DecayAt),
+		claim.UpdatedAt,
+		nullableString(claim.UpdatedBy),
+	)
+	if err != nil {
+		return ClaimRecord{}, err
+	}
+	affected, err := result.RowsAffected()
+	if err == nil && affected != 1 {
+		return ClaimRecord{}, fmt.Errorf("claim %q was not created", claim.ClaimID)
+	}
+	return claim, nil
+}
+
+func (s *Store) GetTruthClaim(ctx context.Context, simulationID, claimID string) (ClaimRecord, error) {
+	db, err := s.open()
+	if err != nil {
+		return ClaimRecord{}, err
+	}
+	if _, err := s.GetSimulationRuntime(ctx, simulationID); err != nil {
+		return ClaimRecord{}, err
+	}
+	var (
+		item         ClaimRecord
+		subject      sql.NullString
+		evidenceRefs string
+		validFrom    sql.NullString
+		validTo      sql.NullString
+		decayAt      sql.NullString
+		updatedBy    sql.NullString
+	)
+	row := db.QueryRowContext(
+		ctx,
+		`SELECT simulation_id, claim_id, claim_type, subject, source, source_kind, claim_text, truth_status, confidence, evidence_refs, version, valid_from, valid_to, decay_at, updated_at, updated_by
+		   FROM truth_claim
+		  WHERE simulation_id = ? AND claim_id = ?`,
+		simulationID, claimID,
+	)
+	if err := row.Scan(
+		&item.SimulationID,
+		&item.ClaimID,
+		&item.ClaimType,
+		&subject,
+		&item.Source,
+		&item.SourceKind,
+		&item.ClaimText,
+		&item.TruthStatus,
+		&item.Confidence,
+		&evidenceRefs,
+		&item.Version,
+		&validFrom,
+		&validTo,
+		&decayAt,
+		&item.UpdatedAt,
+		&updatedBy,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ClaimRecord{}, ErrTruthClaimNotFound
+		}
+		return ClaimRecord{}, err
+	}
+	decodeClaimRecord(&item, subject, evidenceRefs, validFrom, validTo, decayAt, updatedBy)
+	return item, nil
+}
+
+func (s *Store) ListTruthClaims(ctx context.Context, simulationID string) ([]ClaimRecord, error) {
 	db, err := s.open()
 	if err != nil {
 		return nil, err
@@ -375,7 +532,7 @@ func (s *Store) ListTruthClaims(ctx context.Context, simulationID string) ([]Tru
 	}
 	rows, err := db.QueryContext(
 		ctx,
-		`SELECT simulation_id, claim_id, source, claim_text, truth_status, confidence, evidence_refs, decay_at, updated_at
+		`SELECT simulation_id, claim_id, claim_type, subject, source, source_kind, claim_text, truth_status, confidence, evidence_refs, version, valid_from, valid_to, decay_at, updated_at, updated_by
 		   FROM truth_claim
 		  WHERE simulation_id = ?
 		  ORDER BY updated_at DESC, claim_id ASC`,
@@ -385,35 +542,79 @@ func (s *Store) ListTruthClaims(ctx context.Context, simulationID string) ([]Tru
 		return nil, err
 	}
 	defer rows.Close()
-	var claims []TruthClaim
+	var claims []ClaimRecord
 	for rows.Next() {
 		var (
-			item         TruthClaim
-			evidenceRefs sql.NullString
+			item         ClaimRecord
+			subject      sql.NullString
+			evidenceRefs string
+			validFrom    sql.NullString
+			validTo      sql.NullString
 			decayAt      sql.NullString
+			updatedBy    sql.NullString
 		)
 		if err := rows.Scan(
 			&item.SimulationID,
 			&item.ClaimID,
+			&item.ClaimType,
+			&subject,
 			&item.Source,
+			&item.SourceKind,
 			&item.ClaimText,
 			&item.TruthStatus,
 			&item.Confidence,
 			&evidenceRefs,
+			&item.Version,
+			&validFrom,
+			&validTo,
 			&decayAt,
 			&item.UpdatedAt,
+			&updatedBy,
 		); err != nil {
 			return nil, err
 		}
-		if evidenceRefs.Valid {
-			item.EvidenceRefs = evidenceRefs.String
-		}
-		if decayAt.Valid {
-			item.DecayAt = decayAt.String
-		}
+		decodeClaimRecord(&item, subject, evidenceRefs, validFrom, validTo, decayAt, updatedBy)
 		claims = append(claims, item)
 	}
 	return claims, rows.Err()
+}
+
+func (s *Store) ListTruthClaimsByStatus(ctx context.Context, simulationID, status string) ([]ClaimRecord, error) {
+	items, err := s.ListTruthClaims(ctx, simulationID)
+	if err != nil {
+		return nil, err
+	}
+	if status == "" {
+		return items, nil
+	}
+	filtered := make([]ClaimRecord, 0, len(items))
+	for _, item := range items {
+		if item.TruthStatus == status {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
+}
+
+func (s *Store) ListDecayedTruthClaims(ctx context.Context, simulationID string, now time.Time) ([]ClaimRecord, error) {
+	items, err := s.ListTruthClaims(ctx, simulationID)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]ClaimRecord, 0, len(items))
+	for _, item := range items {
+		if item.DecayAt == "" {
+			continue
+		}
+		decayAt, err := time.Parse(time.RFC3339, item.DecayAt)
+		if err != nil {
+			continue
+		}
+		if !decayAt.After(now) && item.TruthStatus != "invalidated" {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered, nil
 }
 
 func (s *Store) SaveMemorySummary(ctx context.Context, summary MemorySummary) (MemorySummary, error) {
@@ -532,6 +733,11 @@ func (s *Store) open() (*sql.DB, error) {
 			s.initErr = err
 			return
 		}
+		if err := migrateTruthClaimSchema(db); err != nil {
+			_ = db.Close()
+			s.initErr = err
+			return
+		}
 		s.db = db
 	})
 	if s.initErr != nil {
@@ -601,6 +807,84 @@ func chooseTimestamp(existing string, fallback time.Time) string {
 	return fallback.Format(time.RFC3339)
 }
 
+func decodeClaimRecord(item *ClaimRecord, subject sql.NullString, evidenceRefs string, validFrom, validTo, decayAt, updatedBy sql.NullString) {
+	if item == nil {
+		return
+	}
+	if subject.Valid {
+		item.Subject = subject.String
+	}
+	if evidenceRefs != "" {
+		if err := json.Unmarshal([]byte(evidenceRefs), &item.EvidenceRefs); err != nil {
+			item.EvidenceRefs = []string{evidenceRefs}
+		}
+	}
+	if validFrom.Valid {
+		item.ValidFrom = validFrom.String
+	}
+	if validTo.Valid {
+		item.ValidTo = validTo.String
+	}
+	if decayAt.Valid {
+		item.DecayAt = decayAt.String
+	}
+	if updatedBy.Valid {
+		item.UpdatedBy = updatedBy.String
+	}
+}
+
+func migrateTruthClaimSchema(db *sql.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, column := range []struct {
+		name       string
+		definition string
+	}{
+		{name: "claim_type", definition: "TEXT NOT NULL DEFAULT 'statement'"},
+		{name: "subject", definition: "TEXT"},
+		{name: "source_kind", definition: "TEXT NOT NULL DEFAULT 'simulation'"},
+		{name: "version", definition: "INTEGER NOT NULL DEFAULT 1"},
+		{name: "valid_from", definition: "TEXT"},
+		{name: "valid_to", definition: "TEXT"},
+		{name: "updated_by", definition: "TEXT"},
+	} {
+		if err := ensureColumn(db, "truth_claim", column.name, column.definition); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			cid       int
+			name      string
+			typ       string
+			notnull   int
+			dfltValue sql.NullString
+			pk        int
+		)
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if rows.Err() != nil {
+		return rows.Err()
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
+	return err
+}
+
 const schemaSQL = `
 CREATE TABLE IF NOT EXISTS simulation_runtime (
 	simulation_id TEXT PRIMARY KEY,
@@ -636,13 +920,20 @@ CREATE TABLE IF NOT EXISTS tick_log (
 CREATE TABLE IF NOT EXISTS truth_claim (
 	simulation_id TEXT NOT NULL,
 	claim_id TEXT NOT NULL,
+	claim_type TEXT NOT NULL DEFAULT 'statement',
+	subject TEXT,
 	source TEXT NOT NULL,
+	source_kind TEXT NOT NULL DEFAULT 'simulation',
 	claim_text TEXT NOT NULL,
 	truth_status TEXT NOT NULL,
 	confidence INTEGER NOT NULL DEFAULT 0,
 	evidence_refs TEXT,
+	version INTEGER NOT NULL DEFAULT 1,
+	valid_from TEXT,
+	valid_to TEXT,
 	decay_at TEXT,
 	updated_at TEXT NOT NULL,
+	updated_by TEXT,
 	PRIMARY KEY (simulation_id, claim_id),
 	FOREIGN KEY (simulation_id) REFERENCES simulation_runtime(simulation_id) ON DELETE CASCADE
 );

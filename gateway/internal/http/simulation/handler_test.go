@@ -196,7 +196,7 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 		t.Fatalf("expected native-runner-active error, got %q", tickRec.Body.String())
 	}
 
-	truthReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-truth", strings.NewReader(`{"claim_id":"claim-1","source":"agent:alice","claim_text":"A new narrative formed","truth_status":"observed","confidence":55}`))
+	truthReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-truth", strings.NewReader(`{"claim_id":"claim-1","claim_type":"statement","subject":"narrative","source":"agent:alice","source_kind":"simulation","claim_text":"A new narrative formed","evidence_refs":["doc:1"]}`))
 	truthReq.Header.Set("Content-Type", "application/json")
 	truthRec := httptest.NewRecorder()
 	handler.HandleRoute(truthRec, truthReq)
@@ -205,6 +205,9 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	}
 	if !strings.Contains(truthRec.Body.String(), `"claim_id":"claim-1"`) {
 		t.Fatalf("expected truth response to include claim, got %q", truthRec.Body.String())
+	}
+	if !strings.Contains(truthRec.Body.String(), `"truth_status":"grounded"`) {
+		t.Fatalf("expected Governor-owned grounded status, got %q", truthRec.Body.String())
 	}
 
 	truthListReq := httptest.NewRequest(http.MethodGet, "/api/simulation/sim-1/sovereign-truth", nil)
@@ -215,6 +218,30 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	}
 	if !strings.Contains(truthListRec.Body.String(), `"claim_id":"claim-1"`) {
 		t.Fatalf("expected truth list to include claim, got %q", truthListRec.Body.String())
+	}
+	filteredTruthReq := httptest.NewRequest(http.MethodGet, "/api/simulation/sim-1/sovereign-truth?truth_status=grounded&min_confidence=80", nil)
+	filteredTruthRec := httptest.NewRecorder()
+	handler.HandleRoute(filteredTruthRec, filteredTruthReq)
+	if filteredTruthRec.Code != http.StatusOK {
+		t.Fatalf("filtered truth status = %d, want 200", filteredTruthRec.Code)
+	}
+	if !strings.Contains(filteredTruthRec.Body.String(), `"claim_id":"claim-1"`) {
+		t.Fatalf("expected filtered truth to include claim, got %q", filteredTruthRec.Body.String())
+	}
+
+	rejectTruthReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-truth", strings.NewReader(`{"claim_id":"claim-2","source":"agent:bob","claim_text":"Bad","truth_status":"grounded","confidence":99}`))
+	rejectTruthReq.Header.Set("Content-Type", "application/json")
+	rejectTruthRec := httptest.NewRecorder()
+	handler.HandleRoute(rejectTruthRec, rejectTruthReq)
+	if rejectTruthRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request for caller-authored truth, got %d body=%s", rejectTruthRec.Code, rejectTruthRec.Body.String())
+	}
+	rejectDecayReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-truth", strings.NewReader(`{"claim_id":"claim-3","source":"agent:bob","claim_text":"Bad","decay_at":"not-a-time"}`))
+	rejectDecayReq.Header.Set("Content-Type", "application/json")
+	rejectDecayRec := httptest.NewRecorder()
+	handler.HandleRoute(rejectDecayRec, rejectDecayReq)
+	if rejectDecayRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request for invalid decay_at, got %d body=%s", rejectDecayRec.Code, rejectDecayRec.Body.String())
 	}
 
 	compactReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-compact", nil)
@@ -261,7 +288,7 @@ func TestSovereignRoutesReturnNotFoundWithoutRuntime(t *testing.T) {
 		{"status", http.MethodGet, "/api/simulation/missing/sovereign-status", ""},
 		{"tick", http.MethodPost, "/api/simulation/missing/sovereign-tick", ""},
 		{"truth get", http.MethodGet, "/api/simulation/missing/sovereign-truth", ""},
-		{"truth post", http.MethodPost, "/api/simulation/missing/sovereign-truth", `{"claim_id":"claim-1","source":"agent:x","claim_text":"x","truth_status":"observed"}`},
+		{"truth post", http.MethodPost, "/api/simulation/missing/sovereign-truth", `{"claim_id":"claim-1","source":"agent:x","claim_text":"x"}`},
 		{"memory", http.MethodGet, "/api/simulation/missing/sovereign-memory", ""},
 		{"compact", http.MethodPost, "/api/simulation/missing/sovereign-compact", ""},
 	}

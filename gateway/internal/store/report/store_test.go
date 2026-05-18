@@ -16,7 +16,10 @@ func TestFileStoreReadAndDeleteParity(t *testing.T) {
 		GraphID:               "graph-1",
 		SimulationRequirement: "test requirement",
 		Status:                "completed",
-		CreatedAt:             "2026-04-24T00:00:00Z",
+		TruthProjection: map[string]any{
+			"grounded_findings": []map[string]any{{"claim_id": "claim-1"}},
+		},
+		CreatedAt: "2026-04-24T00:00:00Z",
 	}
 	if err := store.CreateReport("report-1", meta); err != nil {
 		t.Fatalf("create report: %v", err)
@@ -43,6 +46,9 @@ func TestFileStoreReadAndDeleteParity(t *testing.T) {
 	}
 	if loadedMeta.MarkdownContent != "# Report\n\nBody" {
 		t.Fatalf("expected markdown hydration, got %q", loadedMeta.MarkdownContent)
+	}
+	if loadedMeta.TruthProjection == nil {
+		t.Fatalf("expected truth projection round-trip, got %#v", loadedMeta.TruthProjection)
 	}
 
 	sections, err := store.LoadSections("report-1")

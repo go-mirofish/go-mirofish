@@ -9,6 +9,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	intgraph "github.com/go-mirofish/go-mirofish/gateway/internal/graph"
 	simulation "github.com/go-mirofish/go-mirofish/gateway/internal/simulation"
@@ -742,12 +743,42 @@ func (h *Handler) handleSovereignTruth(w http.ResponseWriter, r *http.Request, s
 			writeJSON(w, http.StatusNotFound, map[string]any{"success": false, "error": "sovereign runtime not enabled"})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": map[string]any{"simulation_id": simulationID, "claims": items}})
+		statusFilter := strings.TrimSpace(r.URL.Query().Get("truth_status"))
+		minConfidence, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("min_confidence")))
+		filtered := make([]map[string]any, 0, len(items))
+		for _, item := range items {
+			if statusFilter != "" && stringValue(item["truth_status"]) != statusFilter {
+				continue
+			}
+			if intValue(item["confidence"]) < minConfidence {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": map[string]any{"simulation_id": simulationID, "claims": filtered}})
 	case http.MethodPost:
 		var payload map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "invalid JSON body"})
 			return
+		}
+		if strings.TrimSpace(stringValue(payload["claim_id"])) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "claim_id is required"})
+			return
+		}
+		if strings.TrimSpace(stringValue(payload["source"])) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "source is required"})
+			return
+		}
+		if strings.TrimSpace(stringValue(payload["claim_text"])) == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "claim_text is required"})
+			return
+		}
+		if raw := strings.TrimSpace(stringValue(payload["decay_at"])); raw != "" {
+			if _, err := time.Parse(time.RFC3339, raw); err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "decay_at must be RFC3339"})
+				return
+			}
 		}
 		item, err := h.service.RecordSovereignTruth(r.Context(), simulationID, payload)
 		if err != nil {

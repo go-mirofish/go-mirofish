@@ -2,6 +2,7 @@ package sovereign
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -95,10 +96,17 @@ func TestTruthClaimsAndMemorySummaries(t *testing.T) {
 	claim, err := store.UpsertTruthClaim(ctx, TruthClaim{
 		SimulationID: "sim-3",
 		ClaimID:      "claim-1",
+		ClaimType:    "statement",
+		Subject:      "market",
 		Source:       "agent:alice",
+		SourceKind:   "simulation",
 		ClaimText:    "Market sentiment is weakening",
 		TruthStatus:  "observed",
 		Confidence:   45,
+		EvidenceRefs: []string{"doc:1"},
+		Version:      1,
+		ValidFrom:    "2026-05-09T00:00:00Z",
+		UpdatedBy:    "test",
 	})
 	if err != nil {
 		t.Fatalf("UpsertTruthClaim: %v", err)
@@ -113,6 +121,12 @@ func TestTruthClaimsAndMemorySummaries(t *testing.T) {
 	}
 	if len(claims) != 1 || claims[0].ClaimID != "claim-1" {
 		t.Fatalf("unexpected claims: %#v", claims)
+	}
+	if claims[0].Subject != "market" || claims[0].SourceKind != "simulation" {
+		t.Fatalf("expected richer claim fields, got %#v", claims[0])
+	}
+	if len(claims[0].EvidenceRefs) != 1 || claims[0].EvidenceRefs[0] != "doc:1" {
+		t.Fatalf("expected evidence refs, got %#v", claims[0].EvidenceRefs)
 	}
 
 	summary, err := store.SaveMemorySummary(ctx, MemorySummary{
@@ -136,6 +150,88 @@ func TestTruthClaimsAndMemorySummaries(t *testing.T) {
 	}
 	if len(summaries) != 1 || summaries[0].SummaryID != "summary-1" {
 		t.Fatalf("unexpected summaries: %#v", summaries)
+	}
+}
+
+func TestTruthClaimSchemaMigration(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "sovereign.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS simulation_runtime (
+			simulation_id TEXT PRIMARY KEY,
+			mode TEXT NOT NULL,
+			profile TEXT NOT NULL,
+			status TEXT NOT NULL,
+			current_tick INTEGER NOT NULL DEFAULT 0,
+			last_tick_at TEXT,
+			last_error TEXT,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS truth_claim (
+			simulation_id TEXT NOT NULL,
+			claim_id TEXT NOT NULL,
+			source TEXT NOT NULL,
+			claim_text TEXT NOT NULL,
+			truth_status TEXT NOT NULL,
+			confidence INTEGER NOT NULL DEFAULT 0,
+			evidence_refs TEXT,
+			decay_at TEXT,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (simulation_id, claim_id)
+		);
+	`); err != nil {
+		t.Fatalf("create legacy schema: %v", err)
+	}
+
+	store := New(path)
+	ctx := context.Background()
+	if _, err := store.InitializeSimulation(ctx, RuntimeState{
+		SimulationID: "sim-migrate",
+		Mode:         "sovereign",
+		Profile:      "workstation",
+		Status:       "ready",
+		CreatedAt:    "2026-05-09T00:00:00Z",
+		UpdatedAt:    "2026-05-09T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("InitializeSimulation: %v", err)
+	}
+	if _, err := store.UpsertTruthClaim(ctx, ClaimRecord{
+		SimulationID: "sim-migrate",
+		ClaimID:      "claim-1",
+		ClaimType:    "statement",
+		Source:       "agent:migrate",
+		SourceKind:   "simulation",
+		ClaimText:    "migrated",
+		TruthStatus:  "observed",
+		Version:      1,
+		UpdatedAt:    "2026-05-09T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("UpsertTruthClaim after migration: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT OR REPLACE INTO truth_claim (simulation_id, claim_id, source, claim_text, truth_status, confidence, evidence_refs, decay_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"sim-migrate", "claim-legacy", "agent:legacy", "legacy", "observed", 10, "doc:legacy", "", "2026-05-09T00:00:00Z"); err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+	got, err := store.GetTruthClaim(ctx, "sim-migrate", "claim-1")
+	if err != nil {
+		t.Fatalf("GetTruthClaim: %v", err)
+	}
+	if got.ClaimType != "statement" || got.SourceKind != "simulation" {
+		t.Fatalf("expected migrated columns populated, got %#v", got)
+	}
+	legacy, err := store.GetTruthClaim(ctx, "sim-migrate", "claim-legacy")
+	if err != nil {
+		t.Fatalf("GetTruthClaim legacy: %v", err)
+	}
+	if len(legacy.EvidenceRefs) != 1 || legacy.EvidenceRefs[0] != "doc:legacy" {
+		t.Fatalf("expected legacy scalar evidence to survive, got %#v", legacy.EvidenceRefs)
 	}
 }
 

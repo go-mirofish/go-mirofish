@@ -20,6 +20,7 @@ type ReportMeta struct {
 	SimulationRequirement string         `json:"simulation_requirement"`
 	Status                string         `json:"status"`
 	Outline               map[string]any `json:"outline,omitempty"`
+	TruthProjection       map[string]any `json:"truth_projection,omitempty"`
 	MarkdownContent       string         `json:"markdown_content"`
 	CreatedAt             string         `json:"created_at"`
 	CompletedAt           string         `json:"completed_at,omitempty"`

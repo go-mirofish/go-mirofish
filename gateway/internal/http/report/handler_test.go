@@ -17,12 +17,25 @@ import (
 	intprovider "github.com/go-mirofish/go-mirofish/gateway/internal/provider"
 	intreport "github.com/go-mirofish/go-mirofish/gateway/internal/report"
 	reportstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/report"
+	sovereignstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/sovereign"
 )
 
 type lookupStub struct {
 	simulation map[string]any
 	project    map[string]any
 	err        error
+}
+
+type truthLookupStub struct {
+	claims []sovereignstore.ClaimRecord
+	err    error
+}
+
+func (t truthLookupStub) ListTruthClaims(ctx context.Context, simulationID string) ([]sovereignstore.ClaimRecord, error) {
+	if t.err != nil {
+		return nil, t.err
+	}
+	return t.claims, nil
 }
 
 func (l lookupStub) ReadSimulation(simulationID string) (map[string]any, error) {
@@ -168,10 +181,10 @@ func (s *storeStub) AppendConsoleLogLine(reportID string, line string) error {
 	return s.base.AppendConsoleLogLine(reportID, line)
 }
 
-func newHandlerForTest(t *testing.T, store reportstore.Store, mem memory.Client, providerExec intprovider.Executor) *Handler {
+func newHandlerForTest(t *testing.T, store reportstore.Store, mem memory.Client, providerExec intprovider.Executor, truth ...intreport.TruthLookup) *Handler {
 	t.Helper()
 	planner := intreport.NewPlanner(providerExec, "model")
-	service := intreport.NewService(store, mem, planner)
+	service := intreport.NewService(store, mem, planner, truth...)
 	return NewHandler(service, lookupStub{
 		simulation: map[string]any{"simulation_id": "sim-1", "project_id": "proj-1", "graph_id": "graph-1"},
 		project:    map[string]any{"project_id": "proj-1", "simulation_requirement": "test requirement"},
@@ -224,12 +237,35 @@ func waitForStatus(t *testing.T, handler *Handler, reportID string, expected str
 
 func TestHandleGenerateAndStatusSuccess(t *testing.T) {
 	store := reportstore.NewFileStore(filepath.Join(t.TempDir(), "reports"))
-	handler := newHandlerForTest(t, store, memoryStub{resp: memory.SearchResponse{Facts: []string{"fact-a", "fact-b"}}}, nil)
+	handler := newHandlerForTest(t, store, memoryStub{resp: memory.SearchResponse{Facts: []string{"fact-a", "fact-b"}}}, nil, truthLookupStub{
+		claims: []sovereignstore.ClaimRecord{
+			{ClaimID: "claim-1", ClaimType: "statement", Source: "agent:alice", SourceKind: "simulation", ClaimText: "Grounded claim", TruthStatus: "grounded", Confidence: 80, EvidenceRefs: []string{"doc:1"}},
+			{ClaimID: "claim-2", ClaimType: "statement", Source: "agent:bob", SourceKind: "simulation", ClaimText: "Speculative claim", TruthStatus: "speculative", Confidence: 40},
+		},
+	})
 
 	reportID := startGeneration(t, handler, `{"simulation_id":"sim-1"}`)
 	status := waitForStatus(t, handler, reportID, "completed")
 	if status["progress"].(float64) != 100 {
 		t.Fatalf("expected progress 100, got %#v", status["progress"])
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/report/"+reportID, nil)
+	rec := httptest.NewRecorder()
+	handler.HandleRoute(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	payload := decodePayload(t, rec)
+	data := payload["data"].(map[string]any)
+	if _, ok := data["truth_projection"]; !ok {
+		t.Fatalf("expected truth_projection in report payload, got %#v", data)
+	}
+	projection := data["truth_projection"].(map[string]any)
+	if len(projection["grounded_findings"].([]any)) != 1 {
+		t.Fatalf("expected 1 grounded finding, got %#v", projection["grounded_findings"])
+	}
+	if len(projection["speculative_findings"].([]any)) != 1 {
+		t.Fatalf("expected 1 speculative finding, got %#v", projection["speculative_findings"])
 	}
 }
 
@@ -371,11 +407,11 @@ func TestHandleStatusBadRequestAndMissing(t *testing.T) {
 			wantFragment: "report_id or simulation_id is required",
 		},
 		{
-			name:         "missing report id",
-			method:       http.MethodGet,
-			target:       "/api/report/generate/status?report_id=missing",
-			wantStatus:   http.StatusNotFound,
-			wantFSError:  true,
+			name:        "missing report id",
+			method:      http.MethodGet,
+			target:      "/api/report/generate/status?report_id=missing",
+			wantStatus:  http.StatusNotFound,
+			wantFSError: true,
 		},
 		{
 			name:         "missing simulation id",

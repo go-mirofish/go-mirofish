@@ -61,6 +61,10 @@ type reportLookup struct {
 	store *localfs.Store
 }
 
+type reportTruthLookup struct {
+	store *sovereignstore.Store
+}
+
 type routeLimiter struct {
 	key        string
 	concurrent chan struct{}
@@ -73,6 +77,17 @@ func (r reportLookup) ReadSimulation(simulationID string) (map[string]any, error
 
 func (r reportLookup) ReadProject(projectID string) (map[string]any, error) {
 	return r.store.ReadProject(projectID)
+}
+
+func (r reportTruthLookup) ListTruthClaims(ctx context.Context, simulationID string) ([]sovereignstore.ClaimRecord, error) {
+	if r.store == nil {
+		return nil, nil
+	}
+	claims, err := r.store.ListTruthClaims(ctx, simulationID)
+	if err == sovereignstore.ErrSimulationRuntimeNotFound {
+		return []sovereignstore.ClaimRecord{}, nil
+	}
+	return claims, err
 }
 
 func main() {
@@ -266,6 +281,8 @@ func buildReportHandler(cfg config, registry *intprovider.Registry) *reporthttp.
 	planner := intreport.NewPlanner(providerExec, llmModel)
 	service := intreport.NewService(store, memoryClient, planner)
 	lookupStore := localfs.New(cfg.projectsDir, cfg.reportsDir, cfg.tasksDir, cfg.simulationsDir, cfg.scriptsDir)
+	truthStore := sovereignstore.New(defaultSovereignDBPath(cfg.simulationsDir))
+	service = intreport.NewService(store, memoryClient, planner, reportTruthLookup{store: truthStore})
 
 	return reporthttp.NewHandler(service, reportLookup{store: lookupStore}, llmModel, providerExec)
 }
@@ -307,11 +324,16 @@ func buildGovernorService(simulationsDir string) *intgovernor.Service {
 		return nil
 	}
 	profile := envOrDefault("SOVEREIGN_PROFILE", intgovernor.DefaultProfile)
+	dbPath := defaultSovereignDBPath(simulationsDir)
+	return intgovernor.NewService(sovereignstore.New(dbPath), profile)
+}
+
+func defaultSovereignDBPath(simulationsDir string) string {
 	dbPath := strings.TrimSpace(os.Getenv("SOVEREIGN_SQLITE_PATH"))
 	if dbPath == "" {
 		dbPath = filepath.Join(simulationsDir, "sovereign.db")
 	}
-	return intgovernor.NewService(sovereignstore.New(dbPath), profile)
+	return dbPath
 }
 
 func buildPrepareHandler(cfg config, registry *intprovider.Registry) *preparehttp.Handler {

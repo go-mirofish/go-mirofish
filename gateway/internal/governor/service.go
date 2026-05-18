@@ -22,6 +22,12 @@ const (
 	StatusStopped           = "stopped"
 	StatusCompleted         = "completed"
 	StatusFailed            = "failed"
+
+	StatusObserved    = "observed"
+	StatusGrounded    = "grounded"
+	StatusSpeculative = "speculative"
+	StatusContested   = "contested"
+	StatusInvalidated = "invalidated"
 )
 
 type Profile struct {
@@ -36,6 +42,24 @@ type Service struct {
 	store   *sovereignstore.Store
 	profile string
 	now     func() time.Time
+}
+
+type ClaimInput struct {
+	ClaimID      string
+	ClaimType    string
+	Subject      string
+	Source       string
+	SourceKind   string
+	ClaimText    string
+	EvidenceRefs []string
+	ValidFrom    string
+	ValidTo      string
+	DecayAt      string
+	UpdatedBy    string
+}
+
+type AuditHook interface {
+	OnClaimClassified(context.Context, sovereignstore.ClaimRecord) error
 }
 
 func NewService(store *sovereignstore.Store, profile string) *Service {
@@ -132,6 +156,117 @@ func (s *Service) UpsertTruthClaim(ctx context.Context, simulationID string, cla
 	return s.store.UpsertTruthClaim(ctx, claim)
 }
 
+func (s *Service) RecordClaim(ctx context.Context, simulationID string, input ClaimInput) (sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
+	}
+	record := sovereignstore.ClaimRecord{
+		SimulationID: simulationID,
+		ClaimID:      input.ClaimID,
+		ClaimType:    input.ClaimType,
+		Subject:      input.Subject,
+		Source:       input.Source,
+		SourceKind:   input.SourceKind,
+		ClaimText:    input.ClaimText,
+		EvidenceRefs: append([]string(nil), input.EvidenceRefs...),
+		ValidFrom:    input.ValidFrom,
+		ValidTo:      input.ValidTo,
+		DecayAt:      input.DecayAt,
+		UpdatedBy:    input.UpdatedBy,
+		Version:      1,
+		UpdatedAt:    s.now().Format(time.RFC3339),
+	}
+	if _, err := s.store.GetTruthClaim(ctx, simulationID, input.ClaimID); err == nil {
+		return sovereignstore.ClaimRecord{}, fmt.Errorf("claim %q already exists", input.ClaimID)
+	} else if err != nil && !errors.Is(err, sovereignstore.ErrTruthClaimNotFound) {
+		return sovereignstore.ClaimRecord{}, err
+	}
+	classified := s.classifyClaimRecord(record)
+	return s.store.CreateTruthClaim(ctx, classified)
+}
+
+func (s *Service) UpdateClaimConfidence(ctx context.Context, simulationID, claimID string, confidence int) (sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
+	}
+	record, err := s.store.GetTruthClaim(ctx, simulationID, claimID)
+	if err != nil {
+		return sovereignstore.ClaimRecord{}, err
+	}
+	record.Confidence = confidence
+	record.Version++
+	record.UpdatedAt = s.now().Format(time.RFC3339)
+	return s.store.UpsertTruthClaim(ctx, record)
+}
+
+func (s *Service) ClassifyClaim(ctx context.Context, record sovereignstore.ClaimRecord) (sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
+	}
+	record = s.classifyClaimRecord(record)
+	return s.store.UpsertTruthClaim(ctx, record)
+}
+
+func (s *Service) classifyClaimRecord(record sovereignstore.ClaimRecord) sovereignstore.ClaimRecord {
+	if record.ClaimType == "" {
+		record.ClaimType = "statement"
+	}
+	if record.SourceKind == "" {
+		record.SourceKind = "simulation"
+	}
+	switch {
+	case hasConflictingEvidence(record.EvidenceRefs):
+		record.TruthStatus = StatusContested
+		record.Confidence = 20
+	case len(record.EvidenceRefs) > 0:
+		record.TruthStatus = StatusGrounded
+		record.Confidence = 80
+	default:
+		record.TruthStatus = StatusSpeculative
+		record.Confidence = 40
+	}
+	if record.ValidFrom == "" {
+		record.ValidFrom = s.now().Format(time.RFC3339)
+	}
+	if record.Version == 0 {
+		record.Version = 1
+	}
+	record.UpdatedAt = s.now().Format(time.RFC3339)
+	return record
+}
+
+func (s *Service) DecayClaims(ctx context.Context, simulationID string, now time.Time) ([]sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return nil, errors.New("governor is not enabled")
+	}
+	candidates, err := s.store.ListDecayedTruthClaims(ctx, simulationID, now)
+	if err != nil {
+		return nil, err
+	}
+	updated := make([]sovereignstore.ClaimRecord, 0, len(candidates))
+	for _, item := range candidates {
+		item.Version++
+		item.UpdatedAt = now.Format(time.RFC3339)
+		switch item.TruthStatus {
+		case StatusGrounded:
+			item.TruthStatus = StatusContested
+			if item.Confidence > 50 {
+				item.Confidence = 50
+			}
+		case StatusSpeculative, StatusContested, StatusObserved:
+			item.TruthStatus = StatusInvalidated
+			item.Confidence = 0
+			item.ValidTo = now.Format(time.RFC3339)
+		}
+		next, err := s.store.UpsertTruthClaim(ctx, item)
+		if err != nil {
+			return nil, err
+		}
+		updated = append(updated, next)
+	}
+	return updated, nil
+}
+
 func (s *Service) ListTruthClaims(ctx context.Context, simulationID string) ([]sovereignstore.TruthClaim, error) {
 	if !s.Enabled() {
 		return nil, errors.New("governor is not enabled")
@@ -201,4 +336,13 @@ func ResolveProfile(name string) Profile {
 			CompactionMode:    "normal",
 		}
 	}
+}
+
+func hasConflictingEvidence(evidenceRefs []string) bool {
+	for _, ref := range evidenceRefs {
+		if len(ref) >= len("conflict:") && ref[:len("conflict:")] == "conflict:" {
+			return true
+		}
+	}
+	return false
 }

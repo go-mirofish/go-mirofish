@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	intgovernor "github.com/go-mirofish/go-mirofish/gateway/internal/governor"
 	simulationstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/simulation"
@@ -334,6 +335,54 @@ func TestObservedSovereignRuntimeForLegacySimulationWithoutRow(t *testing.T) {
 	}
 	if observed["current_tick"] != 3 {
 		t.Fatalf("expected observed tick 3, got %#v", observed["current_tick"])
+	}
+}
+
+func TestAdvanceTickAppliesDecay(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "projects", "proj-1")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll project: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "project.json"), []byte(`{"project_id":"proj-1","graph_id":"graph-1"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile project.json: %v", err)
+	}
+
+	store := simulationstore.New(
+		filepath.Join(root, "simulations"),
+		filepath.Join(root, "scripts"),
+		filepath.Join(root, "projects"),
+		filepath.Join(root, "reports"),
+	)
+	governor := intgovernor.NewService(sovereignstore.New(filepath.Join(root, "simulations", "sovereign.db")), intgovernor.DefaultProfile)
+	service := NewServiceWithGovernor(store, nil, governor)
+	now := time.Now().UTC()
+
+	created, err := service.Create(CreateRequest{ProjectID: "proj-1"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	simulationID := created["simulation_id"].(string)
+	if _, err := governor.RecordClaim(context.Background(), simulationID, intgovernor.ClaimInput{
+		ClaimID:   "claim-decay",
+		Source:    "agent:alice",
+		ClaimText: "unguarded claim",
+		DecayAt:   now.Add(-time.Minute).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("RecordClaim: %v", err)
+	}
+	if _, err := service.AdvanceSovereignTick(context.Background(), simulationID); err != nil {
+		t.Fatalf("AdvanceSovereignTick: %v", err)
+	}
+	claims, err := service.SovereignTruth(context.Background(), simulationID)
+	if err != nil {
+		t.Fatalf("SovereignTruth: %v", err)
+	}
+	if len(claims) != 1 {
+		t.Fatalf("expected 1 claim, got %d", len(claims))
+	}
+	if claims[0]["truth_status"] != intgovernor.StatusInvalidated {
+		t.Fatalf("expected invalidated claim after decay, got %#v", claims[0]["truth_status"])
 	}
 }
 

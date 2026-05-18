@@ -12,11 +12,16 @@ import (
 	"github.com/go-mirofish/go-mirofish/gateway/internal/memory"
 	"github.com/go-mirofish/go-mirofish/gateway/internal/provider"
 	reportstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/report"
+	sovereignstore "github.com/go-mirofish/go-mirofish/gateway/internal/store/sovereign"
 )
 
 type SimulationLookup interface {
 	ReadSimulation(simulationID string) (map[string]any, error)
 	ReadProject(projectID string) (map[string]any, error)
+}
+
+type TruthLookup interface {
+	ListTruthClaims(context.Context, string) ([]sovereignstore.ClaimRecord, error)
 }
 
 type GeneratedSection struct {
@@ -29,10 +34,15 @@ type Service struct {
 	store   reportstore.Store
 	memory  memory.Client
 	planner *Planner
+	truth   TruthLookup
 }
 
-func NewService(store reportstore.Store, memoryClient memory.Client, planner *Planner) *Service {
-	return &Service{store: store, memory: memoryClient, planner: planner}
+func NewService(store reportstore.Store, memoryClient memory.Client, planner *Planner, truth ...TruthLookup) *Service {
+	service := &Service{store: store, memory: memoryClient, planner: planner}
+	if len(truth) > 0 {
+		service.truth = truth[0]
+	}
+	return service
 }
 
 type ReportGenerateRequest struct {
@@ -168,7 +178,7 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 	emit(map[string]any{
 		"action": "report_start",
 		"details": map[string]any{
-			"simulation_id":            simulationID,
+			"simulation_id":          simulationID,
 			"simulation_requirement": requirement,
 		},
 	})
@@ -219,9 +229,9 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 	}
 	for _, section := range sections {
 		emit(map[string]any{
-			"action":         "section_start",
-			"section_index":  section.Index,
-			"section_title":  section.Title,
+			"action":        "section_start",
+			"section_index": section.Index,
+			"section_title": section.Title,
 		})
 		emit(map[string]any{
 			"action":        "section_complete",
@@ -251,6 +261,7 @@ func (s *Service) run(reportID, simulationID, graphID, requirement, model string
 		"summary":  outline.Summary,
 		"sections": outline.Sections,
 	}
+	meta.TruthProjection = s.truthProjection(ctx, simulationID)
 	if err := s.store.SaveMeta(reportID, meta); err != nil {
 		s.fail(reportID, err)
 		return
@@ -500,9 +511,71 @@ func reportMetaToMap(meta reportstore.ReportMeta) map[string]any {
 		"simulation_requirement": meta.SimulationRequirement,
 		"status":                 meta.Status,
 		"outline":                meta.Outline,
+		"truth_projection":       meta.TruthProjection,
 		"markdown_content":       meta.MarkdownContent,
 		"created_at":             meta.CreatedAt,
 		"completed_at":           meta.CompletedAt,
 		"error":                  meta.Error,
+	}
+}
+
+func (s *Service) truthProjection(ctx context.Context, simulationID string) map[string]any {
+	if s.truth == nil {
+		return map[string]any{
+			"grounded_findings":    []map[string]any{},
+			"speculative_findings": []map[string]any{},
+			"contested_findings":   []map[string]any{},
+			"invalidated_findings": []map[string]any{},
+		}
+	}
+	claims, err := s.truth.ListTruthClaims(ctx, simulationID)
+	if err != nil {
+		return map[string]any{
+			"grounded_findings":    []map[string]any{},
+			"speculative_findings": []map[string]any{},
+			"contested_findings":   []map[string]any{},
+			"invalidated_findings": []map[string]any{},
+			"error":                err.Error(),
+		}
+	}
+	projection := map[string]any{
+		"grounded_findings":    []map[string]any{},
+		"speculative_findings": []map[string]any{},
+		"contested_findings":   []map[string]any{},
+		"invalidated_findings": []map[string]any{},
+	}
+	for _, claim := range claims {
+		publicStatus := publicTruthStatus(claim.TruthStatus)
+		entry := map[string]any{
+			"claim_id":      claim.ClaimID,
+			"claim_type":    claim.ClaimType,
+			"subject":       claim.Subject,
+			"source":        claim.Source,
+			"source_kind":   claim.SourceKind,
+			"claim_text":    claim.ClaimText,
+			"truth_status":  publicStatus,
+			"confidence":    claim.Confidence,
+			"evidence_refs": claim.EvidenceRefs,
+		}
+		switch publicStatus {
+		case "grounded":
+			projection["grounded_findings"] = append(projection["grounded_findings"].([]map[string]any), entry)
+		case "contested":
+			projection["contested_findings"] = append(projection["contested_findings"].([]map[string]any), entry)
+		case "invalidated":
+			projection["invalidated_findings"] = append(projection["invalidated_findings"].([]map[string]any), entry)
+		default:
+			projection["speculative_findings"] = append(projection["speculative_findings"].([]map[string]any), entry)
+		}
+	}
+	return projection
+}
+
+func publicTruthStatus(status string) string {
+	switch status {
+	case "observed":
+		return "speculative"
+	default:
+		return status
 	}
 }

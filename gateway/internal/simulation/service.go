@@ -506,6 +506,9 @@ func (s *Service) AdvanceSovereignTick(ctx context.Context, simulationID string)
 		return nil, err
 	}
 	_ = s.syncSovereignControlState(simulationID, state)
+	if _, err := s.governor.DecayClaims(ctx, strings.TrimSpace(simulationID), s.now()); err != nil {
+		return nil, err
+	}
 	return sovereignRuntimeToMap(state), nil
 }
 
@@ -530,13 +533,20 @@ func (s *Service) SovereignTruth(ctx context.Context, simulationID string) ([]ma
 		out = append(out, map[string]any{
 			"simulation_id": item.SimulationID,
 			"claim_id":      item.ClaimID,
+			"claim_type":    item.ClaimType,
+			"subject":       item.Subject,
 			"source":        item.Source,
+			"source_kind":   item.SourceKind,
 			"claim_text":    item.ClaimText,
-			"truth_status":  item.TruthStatus,
+			"truth_status":  publicTruthStatus(item.TruthStatus),
 			"confidence":    item.Confidence,
 			"evidence_refs": item.EvidenceRefs,
+			"version":       item.Version,
+			"valid_from":    item.ValidFrom,
+			"valid_to":      item.ValidTo,
 			"decay_at":      item.DecayAt,
 			"updated_at":    item.UpdatedAt,
+			"updated_by":    item.UpdatedBy,
 		})
 	}
 	return out, nil
@@ -549,14 +559,24 @@ func (s *Service) RecordSovereignTruth(ctx context.Context, simulationID string,
 	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true); err != nil {
 		return nil, err
 	}
-	claim, err := s.governor.UpsertTruthClaim(ctx, strings.TrimSpace(simulationID), sovereignstore.TruthClaim{
+	if _, exists := payload["truth_status"]; exists {
+		return nil, errors.New("truth_status is Governor-owned and may not be set by the caller")
+	}
+	if _, exists := payload["confidence"]; exists {
+		return nil, errors.New("confidence is Governor-owned and may not be set by the caller")
+	}
+	claim, err := s.governor.RecordClaim(ctx, strings.TrimSpace(simulationID), intgovernor.ClaimInput{
 		ClaimID:      stringValue(payload["claim_id"]),
+		ClaimType:    stringValue(payload["claim_type"]),
+		Subject:      stringValue(payload["subject"]),
 		Source:       stringValue(payload["source"]),
+		SourceKind:   stringValue(payload["source_kind"]),
 		ClaimText:    stringValue(payload["claim_text"]),
-		TruthStatus:  firstNonEmpty(stringValue(payload["truth_status"]), "observed"),
-		Confidence:   intValue(payload["confidence"]),
-		EvidenceRefs: stringValue(payload["evidence_refs"]),
+		EvidenceRefs: stringSliceValue(payload["evidence_refs"]),
+		ValidFrom:    stringValue(payload["valid_from"]),
+		ValidTo:      stringValue(payload["valid_to"]),
 		DecayAt:      stringValue(payload["decay_at"]),
+		UpdatedBy:    stringValue(payload["updated_by"]),
 	})
 	if err != nil {
 		return nil, err
@@ -564,13 +584,20 @@ func (s *Service) RecordSovereignTruth(ctx context.Context, simulationID string,
 	return map[string]any{
 		"simulation_id": claim.SimulationID,
 		"claim_id":      claim.ClaimID,
+		"claim_type":    claim.ClaimType,
+		"subject":       claim.Subject,
 		"source":        claim.Source,
+		"source_kind":   claim.SourceKind,
 		"claim_text":    claim.ClaimText,
-		"truth_status":  claim.TruthStatus,
+		"truth_status":  publicTruthStatus(claim.TruthStatus),
 		"confidence":    claim.Confidence,
 		"evidence_refs": claim.EvidenceRefs,
+		"version":       claim.Version,
+		"valid_from":    claim.ValidFrom,
+		"valid_to":      claim.ValidTo,
 		"decay_at":      claim.DecayAt,
 		"updated_at":    claim.UpdatedAt,
+		"updated_by":    claim.UpdatedBy,
 	}, nil
 }
 
@@ -617,6 +644,9 @@ func (s *Service) CompactSovereignMemory(ctx context.Context, simulationID strin
 	}
 	summary, err := s.governor.Compact(ctx, strings.TrimSpace(simulationID))
 	if err != nil {
+		return nil, err
+	}
+	if _, err := s.governor.DecayClaims(ctx, strings.TrimSpace(simulationID), s.now()); err != nil {
 		return nil, err
 	}
 	return map[string]any{
@@ -1197,6 +1227,37 @@ func minInt(a, b int) int {
 
 func isNotExist(err error) bool {
 	return os.IsNotExist(err)
+}
+
+func stringSliceValue(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			if s := stringValue(item); s != "" {
+				out = append(out, s)
+			}
+		}
+		return out
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil
+		}
+		return []string{strings.TrimSpace(v)}
+	default:
+		return nil
+	}
+}
+
+func publicTruthStatus(status string) string {
+	switch status {
+	case intgovernor.StatusObserved:
+		return intgovernor.StatusSpeculative
+	default:
+		return status
+	}
 }
 
 func shouldStopRunState(runState map[string]any) bool {
