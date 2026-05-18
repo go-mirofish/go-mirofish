@@ -106,7 +106,7 @@ type reportLookup struct {
 }
 
 type reportTruthLookup struct {
-	store *sovereignstore.Store
+	governor *intgovernor.Service
 }
 
 type routeLimiter struct {
@@ -728,10 +728,10 @@ func (r reportLookup) ReadProject(projectID string) (map[string]any, error) {
 }
 
 func (r reportTruthLookup) ListTruthClaims(ctx context.Context, simulationID string) ([]sovereignstore.ClaimRecord, error) {
-	if r.store == nil {
+	if r.governor == nil {
 		return nil, nil
 	}
-	claims, err := r.store.ListTruthClaims(ctx, simulationID)
+	claims, err := r.governor.ObserveTruthClaims(ctx, simulationID, time.Now().UTC())
 	if err == sovereignstore.ErrSimulationRuntimeNotFound {
 		return []sovereignstore.ClaimRecord{}, nil
 	}
@@ -798,12 +798,17 @@ func buildReportHandler(cfg Config, registry *intprovider.Registry) *reporthttp.
 	memoryClient := intmemory.NewZepClient(zepBase, strings.TrimSpace(os.Getenv("ZEP_API_KEY")), nil)
 	store := reportstore.NewFileStore(cfg.ReportsDir)
 	planner := intreport.NewPlanner(providerExec, llmModel)
-	service := intreport.NewService(store, memoryClient, planner)
+	service := intreport.NewService(store, memoryClient, planner, buildReportTruthLookup(cfg.SimulationsDir))
 	lookupStore := localfs.New(cfg.ProjectsDir, cfg.ReportsDir, cfg.TasksDir, cfg.SimulationsDir, cfg.ScriptsDir)
-	truthStore := sovereignstore.New(defaultSovereignDBPath(cfg.SimulationsDir))
-	service = intreport.NewService(store, memoryClient, planner, reportTruthLookup{store: truthStore})
 
 	return reporthttp.NewHandler(service, reportLookup{store: lookupStore}, llmModel, providerExec)
+}
+
+func buildReportTruthLookup(simulationsDir string) intreport.TruthLookup {
+	if strings.ToLower(strings.TrimSpace(os.Getenv("SOVEREIGN_ENABLED"))) != "true" {
+		return nil
+	}
+	return reportTruthLookup{governor: intgovernor.NewService(sovereignstore.New(defaultSovereignDBPath(simulationsDir)), envOrDefault("SOVEREIGN_PROFILE", intgovernor.DefaultProfile))}
 }
 
 func buildGraphHandler(cfg Config) *graphhttp.Handler {

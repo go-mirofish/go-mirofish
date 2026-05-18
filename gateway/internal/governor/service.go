@@ -245,19 +245,9 @@ func (s *Service) DecayClaims(ctx context.Context, simulationID string, now time
 	}
 	updated := make([]sovereignstore.ClaimRecord, 0, len(candidates))
 	for _, item := range candidates {
+		item = s.projectClaimDecay(item, now, false)
 		item.Version++
 		item.UpdatedAt = now.Format(time.RFC3339)
-		switch item.TruthStatus {
-		case StatusGrounded:
-			item.TruthStatus = StatusContested
-			if item.Confidence > 50 {
-				item.Confidence = 50
-			}
-		case StatusSpeculative, StatusContested, StatusObserved:
-			item.TruthStatus = StatusInvalidated
-			item.Confidence = 0
-			item.ValidTo = now.Format(time.RFC3339)
-		}
 		next, err := s.store.UpsertTruthClaim(ctx, item)
 		if err != nil {
 			return nil, err
@@ -272,6 +262,21 @@ func (s *Service) ListTruthClaims(ctx context.Context, simulationID string) ([]s
 		return nil, errors.New("governor is not enabled")
 	}
 	return s.store.ListTruthClaims(ctx, simulationID)
+}
+
+func (s *Service) ObserveTruthClaims(ctx context.Context, simulationID string, now time.Time) ([]sovereignstore.ClaimRecord, error) {
+	if !s.Enabled() {
+		return nil, errors.New("governor is not enabled")
+	}
+	claims, err := s.store.ListTruthClaims(ctx, simulationID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]sovereignstore.ClaimRecord, 0, len(claims))
+	for _, item := range claims {
+		out = append(out, s.projectClaimDecay(item, now, true))
+	}
+	return out, nil
 }
 
 func (s *Service) SaveMemorySummary(ctx context.Context, simulationID string, summary sovereignstore.MemorySummary) (sovereignstore.MemorySummary, error) {
@@ -336,6 +341,30 @@ func ResolveProfile(name string) Profile {
 			CompactionMode:    "normal",
 		}
 	}
+}
+
+func (s *Service) projectClaimDecay(item sovereignstore.ClaimRecord, now time.Time, projected bool) sovereignstore.ClaimRecord {
+	if item.DecayAt == "" {
+		return item
+	}
+	decayAt, err := time.Parse(time.RFC3339, item.DecayAt)
+	if err != nil || decayAt.After(now) || item.TruthStatus == StatusInvalidated {
+		return item
+	}
+	switch item.TruthStatus {
+	case StatusGrounded:
+		item.TruthStatus = StatusContested
+		if item.Confidence > 50 {
+			item.Confidence = 50
+		}
+		item.DecayAt = now.Add(time.Second).Format(time.RFC3339Nano)
+	case StatusSpeculative, StatusContested, StatusObserved:
+		item.TruthStatus = StatusInvalidated
+		item.Confidence = 0
+		item.ValidTo = now.Format(time.RFC3339)
+		item.DecayAt = ""
+	}
+	return item
 }
 
 func hasConflictingEvidence(evidenceRefs []string) bool {

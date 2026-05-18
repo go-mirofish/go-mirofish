@@ -967,6 +967,13 @@ func TestReadinessWithSovereignEnabled(t *testing.T) {
 	}
 }
 
+func TestBuildReportTruthLookupDisabledByDefault(t *testing.T) {
+	t.Setenv("SOVEREIGN_ENABLED", "")
+	if lookup := buildReportTruthLookup(t.TempDir()); lookup != nil {
+		t.Fatalf("expected nil truth lookup when sovereign is disabled, got %#v", lookup)
+	}
+}
+
 func TestReportControlPlaneReadEndpointsAndProxyFallback(t *testing.T) {
 	tmpDir := t.TempDir()
 	reportID := "report-123"

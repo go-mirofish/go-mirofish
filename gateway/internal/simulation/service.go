@@ -524,7 +524,7 @@ func (s *Service) SovereignTruth(ctx context.Context, simulationID string) ([]ma
 		}
 		return nil, err
 	}
-	items, err := s.governor.ListTruthClaims(ctx, strings.TrimSpace(simulationID))
+	items, err := s.governor.ObserveTruthClaims(ctx, strings.TrimSpace(simulationID), s.now())
 	if err != nil {
 		return nil, err
 	}
