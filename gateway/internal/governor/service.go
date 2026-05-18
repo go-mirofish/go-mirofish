@@ -148,14 +148,6 @@ func (s *Service) SyncRuntimeState(ctx context.Context, state sovereignstore.Run
 	return s.store.SyncRuntimeState(ctx, state)
 }
 
-func (s *Service) UpsertTruthClaim(ctx context.Context, simulationID string, claim sovereignstore.TruthClaim) (sovereignstore.TruthClaim, error) {
-	if !s.Enabled() {
-		return sovereignstore.TruthClaim{}, errors.New("governor is not enabled")
-	}
-	claim.SimulationID = simulationID
-	return s.store.UpsertTruthClaim(ctx, claim)
-}
-
 func (s *Service) RecordClaim(ctx context.Context, simulationID string, input ClaimInput) (sovereignstore.ClaimRecord, error) {
 	if !s.Enabled() {
 		return sovereignstore.ClaimRecord{}, errors.New("governor is not enabled")
@@ -353,6 +345,13 @@ func (s *Service) projectClaimDecay(item sovereignstore.ClaimRecord, now time.Ti
 	}
 	switch item.TruthStatus {
 	case StatusGrounded:
+		if projected && now.Sub(decayAt) >= time.Second {
+			item.TruthStatus = StatusInvalidated
+			item.Confidence = 0
+			item.ValidTo = now.Format(time.RFC3339)
+			item.DecayAt = ""
+			return item
+		}
 		item.TruthStatus = StatusContested
 		if item.Confidence > 50 {
 			item.Confidence = 50

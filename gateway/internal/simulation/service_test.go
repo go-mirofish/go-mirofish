@@ -386,6 +386,47 @@ func TestAdvanceTickAppliesDecay(t *testing.T) {
 	}
 }
 
+func TestRecordSovereignTruthRejectsGovernorOwnedFieldsAtServiceBoundary(t *testing.T) {
+	root := t.TempDir()
+	projectDir := filepath.Join(root, "projects", "proj-1")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll project: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "project.json"), []byte(`{"project_id":"proj-1","graph_id":"graph-1"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile project.json: %v", err)
+	}
+
+	store := simulationstore.New(
+		filepath.Join(root, "simulations"),
+		filepath.Join(root, "scripts"),
+		filepath.Join(root, "projects"),
+		filepath.Join(root, "reports"),
+	)
+	governor := intgovernor.NewService(sovereignstore.New(filepath.Join(root, "simulations", "sovereign.db")), intgovernor.DefaultProfile)
+	service := NewServiceWithGovernor(store, nil, governor)
+	created, err := service.Create(CreateRequest{ProjectID: "proj-1"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	simulationID := created["simulation_id"].(string)
+	if _, err := service.RecordSovereignTruth(context.Background(), simulationID, map[string]any{
+		"claim_id":     "claim-1",
+		"source":       "agent:alice",
+		"claim_text":   "bad",
+		"truth_status": "grounded",
+	}); err == nil {
+		t.Fatal("expected service-level rejection of caller-authored truth_status")
+	}
+	if _, err := service.RecordSovereignTruth(context.Background(), simulationID, map[string]any{
+		"claim_id":   "claim-2",
+		"source":     "agent:alice",
+		"claim_text": "bad",
+		"decay_at":   time.Now().UTC().Format(time.RFC3339),
+	}); err == nil {
+		t.Fatal("expected service-level rejection of caller-authored decay_at")
+	}
+}
+
 func TestCompactDoesNotApplySecondDecayStep(t *testing.T) {
 	root := t.TempDir()
 	projectDir := filepath.Join(root, "projects", "proj-1")

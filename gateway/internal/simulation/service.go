@@ -556,6 +556,18 @@ func (s *Service) RecordSovereignTruth(ctx context.Context, simulationID string,
 	if s.governor == nil || !s.governor.Enabled() {
 		return nil, nil
 	}
+	if strings.TrimSpace(stringValue(payload["truth_status"])) != "" {
+		return nil, errors.New("truth_status is Governor-owned and may not be set by the caller")
+	}
+	if payload["confidence"] != nil {
+		return nil, errors.New("confidence is Governor-owned and may not be set by the caller")
+	}
+	if strings.TrimSpace(stringValue(payload["decay_at"])) != "" {
+		return nil, errors.New("decay_at is Governor-owned and may not be set by the caller")
+	}
+	if strings.TrimSpace(stringValue(payload["valid_to"])) != "" {
+		return nil, errors.New("valid_to is Governor-owned and may not be set by the caller")
+	}
 	if _, err := s.ensureSovereignInitialized(ctx, strings.TrimSpace(simulationID), true); err != nil {
 		return nil, err
 	}

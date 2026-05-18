@@ -269,6 +269,35 @@ func TestHandleGenerateAndStatusSuccess(t *testing.T) {
 	}
 }
 
+func TestLegacyReportStillReturnsTruthProjectionObject(t *testing.T) {
+	store := reportstore.NewFileStore(filepath.Join(t.TempDir(), "reports"))
+	if err := store.CreateReport("report-legacy", reportstore.ReportMeta{
+		ReportID:              "report-legacy",
+		SimulationID:          "sim-legacy",
+		GraphID:               "graph-legacy",
+		SimulationRequirement: "legacy requirement",
+		Status:                "completed",
+		CreatedAt:             "2026-05-18T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateReport: %v", err)
+	}
+	if err := store.SaveMarkdown("report-legacy", "# Legacy"); err != nil {
+		t.Fatalf("SaveMarkdown: %v", err)
+	}
+	handler := newHandlerForTest(t, store, memoryStub{}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/report/report-legacy", nil)
+	rec := httptest.NewRecorder()
+	handler.HandleRoute(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	payload := decodePayload(t, rec)
+	data := payload["data"].(map[string]any)
+	if _, ok := data["truth_projection"].(map[string]any); !ok {
+		t.Fatalf("expected truth_projection object, got %#v", data["truth_projection"])
+	}
+}
+
 func TestHandleGenerateBadRequest(t *testing.T) {
 	store := reportstore.NewFileStore(filepath.Join(t.TempDir(), "reports"))
 	handler := newHandlerForTest(t, store, memoryStub{}, nil)

@@ -504,6 +504,15 @@ func ternaryString(ok bool, yes, no string) string {
 }
 
 func reportMetaToMap(meta reportstore.ReportMeta) map[string]any {
+	projection := meta.TruthProjection
+	if projection == nil {
+		projection = map[string]any{
+			"grounded_findings":    []map[string]any{},
+			"speculative_findings": []map[string]any{},
+			"contested_findings":   []map[string]any{},
+			"invalidated_findings": []map[string]any{},
+		}
+	}
 	return map[string]any{
 		"report_id":              meta.ReportID,
 		"simulation_id":          meta.SimulationID,
@@ -511,7 +520,7 @@ func reportMetaToMap(meta reportstore.ReportMeta) map[string]any {
 		"simulation_requirement": meta.SimulationRequirement,
 		"status":                 meta.Status,
 		"outline":                meta.Outline,
-		"truth_projection":       meta.TruthProjection,
+		"truth_projection":       projection,
 		"markdown_content":       meta.MarkdownContent,
 		"created_at":             meta.CreatedAt,
 		"completed_at":           meta.CompletedAt,

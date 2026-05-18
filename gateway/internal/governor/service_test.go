@@ -69,15 +69,13 @@ func TestProfileResolutionAndTruthMemoryFlows(t *testing.T) {
 		t.Fatalf("expected empty claims, got %#v", claims)
 	}
 
-	claim, err := service.UpsertTruthClaim(ctx, "sim-2", sovereignstore.TruthClaim{
-		ClaimID:     "claim-1",
-		Source:      "agent:bob",
-		ClaimText:   "Sentiment is negative",
-		TruthStatus: "observed",
-		Confidence:  35,
+	claim, err := service.RecordClaim(ctx, "sim-2", ClaimInput{
+		ClaimID:   "claim-1",
+		Source:    "agent:bob",
+		ClaimText: "Sentiment is negative",
 	})
 	if err != nil {
-		t.Fatalf("UpsertTruthClaim: %v", err)
+		t.Fatalf("RecordClaim: %v", err)
 	}
 	if claim.SimulationID != "sim-2" {
 		t.Fatalf("unexpected simulation id on claim: %#v", claim)
@@ -144,6 +142,20 @@ func TestRecordClassifyAndDecayClaims(t *testing.T) {
 	if speculative.TruthStatus != StatusSpeculative {
 		t.Fatalf("unexpected speculative status: %#v", speculative)
 	}
+
+	groundedLate, err := service.RecordClaim(ctx, "sim-claims", ClaimInput{
+		ClaimID:      "claim-grounded-late",
+		Source:       "agent:dana",
+		ClaimText:    "Grounded long ago",
+		EvidenceRefs: []string{"doc:2"},
+		DecayAt:      now.Add(-2 * time.Second).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("RecordClaim grounded late: %v", err)
+	}
+	if groundedLate.TruthStatus != StatusGrounded {
+		t.Fatalf("unexpected grounded late status: %#v", groundedLate)
+	}
 	if _, err := service.RecordClaim(ctx, "sim-claims", ClaimInput{
 		ClaimID:   "claim-speculative",
 		Source:    "agent:carol",
@@ -156,8 +168,22 @@ func TestRecordClassifyAndDecayClaims(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecayClaims: %v", err)
 	}
-	if len(decayed) != 2 {
-		t.Fatalf("expected 2 decayed claims, got %d", len(decayed))
+	if len(decayed) != 3 {
+		t.Fatalf("expected 3 decayed claims, got %d", len(decayed))
+	}
+
+	observed, err := service.ObserveTruthClaims(ctx, "sim-claims", now.Add(2*time.Second))
+	if err != nil {
+		t.Fatalf("ObserveTruthClaims: %v", err)
+	}
+	foundInvalidated := false
+	for _, item := range observed {
+		if item.ClaimID == "claim-grounded-late" && item.TruthStatus == StatusInvalidated {
+			foundInvalidated = true
+		}
+	}
+	if !foundInvalidated {
+		t.Fatalf("expected overdue grounded claim to project invalidated on read, got %#v", observed)
 	}
 
 	updated, err := service.UpdateClaimConfidence(ctx, "sim-claims", "claim-grounded", 65)

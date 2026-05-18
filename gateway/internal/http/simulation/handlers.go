@@ -9,7 +9,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"time"
 
 	intgraph "github.com/go-mirofish/go-mirofish/gateway/internal/graph"
 	simulation "github.com/go-mirofish/go-mirofish/gateway/internal/simulation"
@@ -775,10 +774,12 @@ func (h *Handler) handleSovereignTruth(w http.ResponseWriter, r *http.Request, s
 			return
 		}
 		if raw := strings.TrimSpace(stringValue(payload["decay_at"])); raw != "" {
-			if _, err := time.Parse(time.RFC3339, raw); err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "decay_at must be RFC3339"})
-				return
-			}
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "decay_at is Governor-owned and may not be set by the caller"})
+			return
+		}
+		if raw := strings.TrimSpace(stringValue(payload["valid_to"])); raw != "" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "valid_to is Governor-owned and may not be set by the caller"})
+			return
 		}
 		item, err := h.service.RecordSovereignTruth(r.Context(), simulationID, payload)
 		if err != nil {

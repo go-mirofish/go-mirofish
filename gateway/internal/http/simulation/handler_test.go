@@ -243,6 +243,13 @@ func TestHandleRouteReadAndAdminSurface(t *testing.T) {
 	if rejectDecayRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected bad request for invalid decay_at, got %d body=%s", rejectDecayRec.Code, rejectDecayRec.Body.String())
 	}
+	rejectValidToReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-truth", strings.NewReader(`{"claim_id":"claim-4","source":"agent:bob","claim_text":"Bad","valid_to":"2026-05-18T00:00:00Z"}`))
+	rejectValidToReq.Header.Set("Content-Type", "application/json")
+	rejectValidToRec := httptest.NewRecorder()
+	handler.HandleRoute(rejectValidToRec, rejectValidToReq)
+	if rejectValidToRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected bad request for caller-authored valid_to, got %d body=%s", rejectValidToRec.Code, rejectValidToRec.Body.String())
+	}
 
 	compactReq := httptest.NewRequest(http.MethodPost, "/api/simulation/sim-1/sovereign-compact", nil)
 	compactRec := httptest.NewRecorder()
